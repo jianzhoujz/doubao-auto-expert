@@ -40,8 +40,12 @@
 | **Microsoft Edge** | [Edge 加载项商店](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd) |
 | **Firefox** | [Firefox 附加组件商店](https://addons.mozilla.org/firefox/addon/tampermonkey/) |
 | **Safari** | [Mac App Store（付费版）](https://apps.apple.com/app/tampermonkey/id1482490089) |
+| **Edge Android** | 内置扩展商店（菜单 → 扩展 → 搜索 [Tampermonkey](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)，需 Edge v130+） |
+| **Edge iOS** | 内置扩展商店（菜单 → 扩展 → 搜索 [Stay](https://apps.apple.com/app/stay-for-safari/id1591620171)，需 Edge v139+） |
 
 > 💡 **提示**：如果你无法访问 Chrome 网上应用店，也可以从 [Tampermonkey 官网](https://www.tampermonkey.net/) 获取离线安装包。
+>
+> 📱 **移动端说明**：Edge Android 和 iOS 版支持的 UserScript 插件不同——Android 端可直接安装 Tampermonkey，iOS 端则通过 [Stay](https://apps.apple.com/app/stay-for-safari/id1591620171) 插件来管理用户脚本。Stay 兼容油猴脚本格式，安装本脚本后即可正常使用。
 
 ### 第二步：安装脚本
 
@@ -114,6 +118,8 @@
 - ✅ Firefox
 - ✅ Safari（需 Tampermonkey 付费版）
 - ✅ 其他基于 Chromium 的浏览器（Brave、Arc、Vivaldi 等）
+- ✅ Edge Android（通过 Tampermonkey，需 Edge v130+）
+- ✅ Edge iOS（通过 Stay 插件，需 Edge v139+）
 
 ## 贡献
 
