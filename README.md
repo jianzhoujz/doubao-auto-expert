@@ -19,9 +19,10 @@
 | 站点 | 默认模式 | 自动切到 |
 |------|----------|----------|
 | [豆包](https://www.doubao.com/chat/) | 快速 / 思考 | 专家 |
-| [Microsoft Copilot](https://copilot.microsoft.com/) | Smart | Think Deeper |
-| [DeepSeek](https://chat.deepseek.com/) | 普通对话 | 深度思考（DeepThink R1） |
+| [DeepSeek](https://chat.deepseek.com/) | 快速模式 | 专家模式 |
 | [通义千问](https://www.qianwen.com/) | 默认 | 深度思考 |
+
+> 💡 暂不支持 Microsoft Copilot：Edge 出于安全策略禁止扩展 / 用户脚本注入到 `copilot.microsoft.com`，Tampermonkey 也无法在该域名运行。
 
 每次切换完成后，右上角会弹出一个轻量 Toast 提示：
 - ✅ **绿色 = 切换成功**：显示从哪个模式切到了哪个模式
@@ -30,15 +31,15 @@
 
 ## 核心特性
 
-🎯 **多站点统一调度** —— 单脚本覆盖豆包、Copilot、DeepSeek、通义千问，按 URL 自动路由到对应处理器，新增站点只需扩展一个 handler。
+🎯 **多站点统一调度** —— 单脚本覆盖豆包、DeepSeek、通义千问，按 URL 自动路由到对应处理器，新增站点只需扩展一个 handler。
 
 🔔 **结果可感知** —— 不再是黑盒。每次执行都会通过 Toast 告诉你：切了 / 没切 / 没切的原因，遇到失败也能第一时间发现。
 
-🔄 **SPA 深度适配** —— 这些站点都是单页应用，新建/切换对话不会刷新页面。脚本通过监听 `pushState`、`replaceState`、`popstate` 与 DOM 变化，在任何导航场景下都能正确触发。对豆包/Copilot 这类「每次会话都重置」的站点会重新切换；对 DeepSeek/通义千问这类「toggle 跨会话保持」的站点只在首次加载执行，避免误把已开启的深度思考点关。
+🔄 **SPA 深度适配** —— 这些站点都是单页应用，新建/切换对话不会刷新页面。脚本通过监听 `pushState`、`replaceState`、`popstate` 与 DOM 变化，在任何导航场景下都能正确触发。豆包 / DeepSeek 这类「每次会话都重置」的站点会重新切换；通义千问这类「toggle 跨会话保持」的站点只在首次加载执行，避免误把已开启的深度思考点关。
 
 🖱️ **原生级事件模拟** —— 豆包等基于 Radix UI 的 UI 框架对普通 `.click()` 不响应。脚本完整模拟 `pointerdown → mousedown → pointerup → mouseup → click` 事件链，与真实用户操作一致。
 
-🧠 **稳健的状态识别** —— 对 toggle 型按钮（DeepSeek / 千问的深度思考开关），通过 `aria-pressed` / `aria-checked` / `data-state` / class 命名 / 背景色等多维信号判断当前是否已开启，再决定是否点击；状态不确定时点击后再以快照变化二次校验，避免误操作。
+🧠 **稳健的状态识别** —— 不同站点用不同信号判定当前模式：豆包看 trigger 按钮文本、DeepSeek 比较 pill 文字颜色（选中色偏蓝）、通义千问读 `aria-pressed`。每个 handler 都经过浏览器实测，避免误点击。
 
 ⏱️ **智能重试** —— 页面加载速度受网络影响，脚本采用最多 30 次、每秒一次的轮询策略，确保慢网下也能可靠完成切换；超时后会给出明确的失败 Toast。
 
@@ -83,7 +84,6 @@
 安装完成后，无需任何额外配置。打开下面任意一个站点，脚本会自动接管：
 
 - [豆包](https://www.doubao.com/chat/)
-- [Microsoft Copilot](https://copilot.microsoft.com/)
 - [DeepSeek](https://chat.deepseek.com/)
 - [通义千问](https://www.qianwen.com/)
 
@@ -100,23 +100,26 @@
           ▼
    检测目标按钮（最多重试 30s）
           │
-   ┌──────┴──────┐
-   │             │
- 下拉菜单型     toggle 按钮型
- (豆包/Copilot)  (DeepSeek/千问)
-   │             │
-   ▼             ▼
- 当前模式       多维信号判断
- == 目标？      当前是否已开启
-   │             │
-   └─→ 是 ─→ Toast「无需切换」（蓝色）
-   │
-   ▼
- 模拟点击执行切换
-   │
-   ▼
- ┌──成功──→ Toast「已切换」（绿色）
- └──失败──→ Toast「切换失败 + 原因」（红色）
+   ┌──────┼──────┐
+   │      │      │
+ 下拉菜单 pill   toggle
+ (豆包)  选择    按钮
+         (DS)  (千问)
+   │      │      │
+   ▼      ▼      ▼
+ 文本=   颜色=  aria-pressed=
+ 专家?   蓝色?  true?
+   │      │      │
+   └──────┼──────┘
+          │
+          └─→ 是 ─→ Toast「无需切换」（蓝色）
+          │
+          ▼
+   模拟点击执行切换
+          │
+          ▼
+   ┌──成功──→ Toast「已切换」（绿色）
+   └──失败──→ Toast「切换失败 + 原因」（红色）
 ```
 
 ## 常见问题
@@ -131,15 +134,19 @@
 
 **Q: 我想切换为其他模式怎么办？**
 
-每个站点对应一个 handler 对象（`doubaoHandler` / `copilotHandler` / `deepseekHandler` / `qianwenHandler`），改动 `targetLabel` 与 `run()` 中的目标判断即可。
+每个站点对应一个 handler 对象（`doubaoHandler` / `deepseekHandler` / `qianwenHandler`），改动 `targetLabel` 与 `run()` 中的目标判断即可。
 
 **Q: 站点更新后脚本失效了？**
 
 由于脚本依赖页面 DOM 结构，前端发版可能导致选择器或状态判断失效。失效时 Toast 会显示具体原因（如「未找到选项」「无法识别开关状态」），方便定位。欢迎 [提交 Issue](https://github.com/jianzhoujz/doubao-auto-expert/issues)，附上 Toast 提示文字与控制台 `[AutoExpert]` 日志即可。
 
-**Q: DeepSeek / 通义千问 toggle 是否会被误关？**
+**Q: 通义千问的「深度思考」是否会被误关？**
 
-不会。这两个站点的 handler 默认只在「首次加载页面」时执行一次，且执行前会用 `aria-pressed` / `aria-checked` / `data-state` / class / 背景色等多维信号判断当前是否已开启；只有在判定为「关闭」时才会点击。SPA 路由变化（在 DeepSeek 内切换会话）不会重复触发，避免把已开启的深度思考点关。
+不会。千问的 handler 配置成只在「首次加载页面」执行，且通过 `aria-pressed === 'true'` 精确判定当前是否已开启；已开启时会显示蓝色 Toast「无需切换」并跳过点击。SPA 路由变化（切换会话）不会重复触发。
+
+**Q: 为什么不支持 Microsoft Copilot？**
+
+Edge / Chrome 出于安全策略禁止扩展和用户脚本注入到 `copilot.microsoft.com`（微软自家域名属于受保护域），Tampermonkey 没法在该域名下执行脚本，因此暂时无法支持。后续如果浏览器策略放开会重新评估。
 
 ## 兼容性
 

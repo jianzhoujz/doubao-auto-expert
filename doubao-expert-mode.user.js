@@ -1,15 +1,14 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      2.0.0
-// @description  自动将豆包 / Microsoft Copilot / DeepSeek / 通义千问的对话模式切换到「深度思考 / 专家」模式，并以右上角 Toast 提示切换结果
+// @version      2.1.0
+// @description  自动将豆包 / DeepSeek / 通义千问的对话模式切换到「深度思考 / 专家」模式，并以右上角 Toast 提示切换结果
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
 // @supportURL   https://github.com/jianzhoujz/doubao-auto-expert/issues
 // @updateURL    https://raw.githubusercontent.com/jianzhoujz/doubao-auto-expert/main/doubao-expert-mode.user.js
 // @downloadURL  https://raw.githubusercontent.com/jianzhoujz/doubao-auto-expert/main/doubao-expert-mode.user.js
 // @match        https://www.doubao.com/chat/*
-// @match        https://copilot.microsoft.com/*
 // @match        https://chat.deepseek.com/*
 // @match        https://www.qianwen.com/*
 // @match        https://qianwen.com/*
@@ -98,61 +97,6 @@
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   }
 
-  /**
-   * 判断 toggle 按钮当前是否处于「开启」状态
-   * @returns {'on'|'off'|'unknown'}
-   */
-  function detectToggleState(btn) {
-    const ariaPressed = btn.getAttribute('aria-pressed');
-    if (ariaPressed === 'true') return 'on';
-    if (ariaPressed === 'false') return 'off';
-
-    const ariaChecked = btn.getAttribute('aria-checked');
-    if (ariaChecked === 'true') return 'on';
-    if (ariaChecked === 'false') return 'off';
-
-    const ds = btn.getAttribute('data-state');
-    if (ds === 'on' || ds === 'active' || ds === 'checked' || ds === 'open') return 'on';
-    if (ds === 'off' || ds === 'inactive' || ds === 'unchecked' || ds === 'closed') return 'off';
-
-    const da = btn.getAttribute('data-active');
-    if (da === 'true') return 'on';
-    if (da === 'false') return 'off';
-
-    const cls = String(btn.className || '');
-    if (/(^|[\s_-])(active|selected|pressed|enabled|checked|isOn|on)([\s_-]|$)/i.test(cls)) return 'on';
-
-    // 兜底：背景色明显非透明 / 非白色 → 视为开启
-    try {
-      const bg = getComputedStyle(btn).backgroundColor;
-      const m = bg.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/);
-      if (m) {
-        const r = +m[1], g = +m[2], b = +m[3];
-        const a = m[4] !== undefined ? parseFloat(m[4]) : 1;
-        if (a > 0.15) {
-          const max = Math.max(r, g, b);
-          const min = Math.min(r, g, b);
-          if (max - min > 25 && max > 60) return 'on';   // 有明显色调
-          if (max > 235 && max - min < 12) return 'off'; // 接近纯白
-        }
-      }
-    } catch (_) {}
-
-    return 'unknown';
-  }
-
-  function snapshotButton(btn) {
-    if (!btn) return '';
-    return [
-      btn.className || '',
-      btn.getAttribute('aria-pressed') || '',
-      btn.getAttribute('aria-checked') || '',
-      btn.getAttribute('data-state') || '',
-      btn.getAttribute('data-active') || '',
-      (getComputedStyle(btn).backgroundColor || ''),
-    ].join('|');
-  }
-
   // ============================================================
   // 站点处理器
   // ============================================================
@@ -197,67 +141,6 @@
       }
       simulateClick(target);
       return { status: 'success', from: current, to: '专家' };
-    },
-  };
-
-  // ---------- Microsoft Copilot：Smart → Think Deeper ----------
-  const copilotHandler = {
-    id: 'copilot',
-    label: 'Copilot',
-    targetLabel: 'Think Deeper',
-    rerunOnRouteChange: true,
-    match: () => /^https:\/\/copilot\.microsoft\.com\//.test(location.href),
-
-    MODE_LABELS: ['Smart', 'Quick', 'Quick response', 'Think Deeper', '快速', '智能', '深入思考'],
-
-    findTrigger() {
-      const candidates = document.querySelectorAll('button, [role="button"]');
-      for (const c of candidates) {
-        const text = (c.textContent || '').trim();
-        if (!text || text.length > 30) continue;
-        if (this.MODE_LABELS.includes(text)) return c;
-      }
-      // 兜底：aria-label 包含 mode/模式
-      for (const c of candidates) {
-        const aria = (c.getAttribute('aria-label') || '').toLowerCase();
-        if (aria.includes('mode') || aria.includes('模式')) {
-          const t = (c.textContent || '').trim();
-          if (this.MODE_LABELS.some((m) => t.includes(m))) return c;
-        }
-      }
-      return null;
-    },
-
-    isAlreadyTarget(text) {
-      return text === 'Think Deeper' || text === '深入思考';
-    },
-
-    async run() {
-      const trigger = this.findTrigger();
-      if (!trigger) return { status: 'pending' };
-
-      const current = (trigger.textContent || '').trim();
-      if (this.isAlreadyTarget(current)) {
-        return { status: 'noop', reason: `当前已是 ${current} 模式` };
-      }
-
-      simulateClick(trigger);
-      await sleep(600);
-
-      let target = null;
-      const items = document.querySelectorAll('[role="menuitem"], [role="option"], [role="radio"], button, li');
-      for (const item of items) {
-        const t = (item.textContent || '').trim();
-        if (t === 'Think Deeper' || t.startsWith('Think Deeper') || t === '深入思考') {
-          target = item; break;
-        }
-      }
-      if (!target) {
-        pressEscape();
-        return { status: 'error', reason: '已展开模型菜单，但未找到 Think Deeper 选项' };
-      }
-      simulateClick(target);
-      return { status: 'success', from: current, to: 'Think Deeper' };
     },
   };
 
@@ -346,7 +229,7 @@
     },
   };
 
-  const HANDLERS = [doubaoHandler, copilotHandler, deepseekHandler, qianwenHandler];
+  const HANDLERS = [doubaoHandler, deepseekHandler, qianwenHandler];
 
   // ============================================================
   // 调度
