@@ -4,6 +4,10 @@
 // @version      2.0.0
 // @description  自动将豆包 / Microsoft Copilot / DeepSeek / 通义千问的对话模式切换到「深度思考 / 专家」模式，并以右上角 Toast 提示切换结果
 // @author       Jian Zhou
+// @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
+// @supportURL   https://github.com/jianzhoujz/doubao-auto-expert/issues
+// @updateURL    https://raw.githubusercontent.com/jianzhoujz/doubao-auto-expert/main/doubao-expert-mode.user.js
+// @downloadURL  https://raw.githubusercontent.com/jianzhoujz/doubao-auto-expert/main/doubao-expert-mode.user.js
 // @match        https://www.doubao.com/chat/*
 // @match        https://copilot.microsoft.com/*
 // @match        https://chat.deepseek.com/*
