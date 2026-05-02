@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      2.1.1
+// @version      2.1.2
 // @description  自动将豆包 / DeepSeek / 通义千问的对话模式切换到「深度思考 / 专家」模式，并以右上角 Toast 提示切换结果
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -175,6 +175,10 @@
     },
 
     async run() {
+      // 已进入具体会话页：pill 控件不再渲染，且模式在该会话内保持，
+      // 不必再尝试切换，否则会卡在 pending 直到超时报错。
+      if (/\/a\/chat\/s\//.test(location.pathname)) return { status: 'skip' };
+
       const expert = this.findPill('专家模式');
       const fast = this.findPill('快速模式');
       if (!expert || !fast) return { status: 'pending' };
@@ -277,6 +281,11 @@
 
     attemptCount = 0;
     settledForUrl = location.href;
+
+    if (result.status === 'skip') {
+      log(handler.id, 'skip', result.reason || '');
+      return;
+    }
 
     if (result.status === 'success') {
       const desc = result.from ? `从「${result.from}」切换为「${result.to}」` : `已切换到「${result.to}」`;
