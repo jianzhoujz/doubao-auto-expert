@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      2.1.0
+// @version      2.1.1
 // @description  自动将豆包 / DeepSeek / 通义千问的对话模式切换到「深度思考 / 专家」模式，并以右上角 Toast 提示切换结果
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -192,19 +192,19 @@
     },
   };
 
-  // ---------- 通义千问：「深度思考」 toggle 按钮 ----------
-  // 实测：<button aria-pressed="false|true">深度思考</button>，aria-pressed 即为开关状态
+  // ---------- 通义千问：「思考」 toggle 按钮 ----------
+  // 实测：<button aria-pressed="false|true">思考</button>，aria-pressed 即为开关状态
   const qianwenHandler = {
     id: 'qianwen',
     label: '通义千问',
-    targetLabel: '深度思考',
+    targetLabel: '思考',
     rerunOnRouteChange: false, // toggle 跨会话通常保持，避免误关
     match: () => /^https:\/\/(www\.)?qianwen\.com\//.test(location.href),
 
     findThinkButton() {
       const btns = document.querySelectorAll('button[aria-pressed]');
       for (const b of btns) {
-        if ((b.textContent || '').trim() === '深度思考') return b;
+        if ((b.textContent || '').trim() === '思考') return b;
       }
       return null;
     },
@@ -214,7 +214,7 @@
       if (!btn) return { status: 'pending' };
 
       if (btn.getAttribute('aria-pressed') === 'true') {
-        return { status: 'noop', reason: '深度思考已开启' };
+        return { status: 'noop', reason: '思考已开启' };
       }
 
       simulateClick(btn);
@@ -223,7 +223,7 @@
       const btn2 = this.findThinkButton();
       const after = btn2 && btn2.getAttribute('aria-pressed');
       if (after === 'true') {
-        return { status: 'success', from: '默认模式', to: '深度思考' };
+        return { status: 'success', from: '默认模式', to: '思考' };
       }
       return { status: 'error', reason: `点击后 aria-pressed=${after}，未切换到 true` };
     },
