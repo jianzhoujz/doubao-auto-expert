@@ -1,17 +1,26 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      2.2.0
-// @description  自动将豆包 / DeepSeek / 通义千问的对话模式切换到「深度思考 / 专家」模式；并在用户消息下方放置跳转按钮，一键把当前问题转发到其他 AI 并自动回填输入框
+// @version      3.0.0
+// @description  在 ChatGPT / Claude / Gemini / Copilot / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
 // @supportURL   https://github.com/jianzhoujz/doubao-auto-expert/issues
 // @updateURL    https://raw.githubusercontent.com/jianzhoujz/doubao-auto-expert/main/doubao-expert-mode.user.js
 // @downloadURL  https://raw.githubusercontent.com/jianzhoujz/doubao-auto-expert/main/doubao-expert-mode.user.js
-// @match        https://www.doubao.com/chat/*
+// @match        https://chatgpt.com/*
+// @match        https://claude.ai/*
+// @match        https://gemini.google.com/*
+// @match        https://copilot.microsoft.com/*
+// @match        https://chatglm.cn/*
+// @match        https://www.kimi.com/*
+// @match        https://kimi.com/*
 // @match        https://chat.deepseek.com/*
 // @match        https://www.qianwen.com/*
 // @match        https://qianwen.com/*
+// @match        https://chat.qwen.ai/*
+// @match        https://www.doubao.com/chat/*
+// @match        https://yuanbao.tencent.com/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -340,22 +349,82 @@
   }
 
   // ============================================================
-  // 跨 AI 转发：在用户气泡下放跳转按钮，目标侧自动回填问题
+  // 跨 AI 转发：捕获用户问题 → 用户气泡下放跳转按钮 + 右下角浮动面板兜底
   // ============================================================
+  // 每条配置 = { id, label, url（转发到此站时的目标 URL）, test（判断当前页是否是此站） }
   const FORWARD_TARGETS = [
-    { id: 'doubao',   label: '豆包',     url: 'https://www.doubao.com/chat/' },
-    { id: 'deepseek', label: 'DeepSeek', url: 'https://chat.deepseek.com/'   },
+    { id: 'chatgpt',  label: 'ChatGPT',   url: 'https://chatgpt.com/',
+      test: (u) => /^https:\/\/chatgpt\.com\//.test(u) },
+    { id: 'claude',   label: 'Claude',    url: 'https://claude.ai/new',
+      test: (u) => /^https:\/\/claude\.ai\//.test(u) },
+    { id: 'gemini',   label: 'Gemini',    url: 'https://gemini.google.com/app',
+      test: (u) => /^https:\/\/gemini\.google\.com\//.test(u) },
+    { id: 'copilot',  label: 'Copilot',   url: 'https://copilot.microsoft.com/',
+      test: (u) => /^https:\/\/copilot\.microsoft\.com\//.test(u) },
+    { id: 'chatglm',  label: '智谱',      url: 'https://chatglm.cn/main/alltoolsdetail?lang=zh',
+      test: (u) => /^https:\/\/chatglm\.cn\//.test(u) },
+    { id: 'kimi',     label: 'Kimi',      url: 'https://www.kimi.com/',
+      test: (u) => /^https:\/\/(www\.)?kimi\.com\//.test(u) },
+    { id: 'deepseek', label: 'DeepSeek',  url: 'https://chat.deepseek.com/',
+      test: (u) => /^https:\/\/chat\.deepseek\.com\//.test(u) },
+    { id: 'qianwen',  label: '通义千问',  url: 'https://www.qianwen.com/',
+      test: (u) => /^https:\/\/(www\.)?qianwen\.com\//.test(u) },
+    { id: 'qwen',     label: 'Qwen',      url: 'https://chat.qwen.ai/',
+      test: (u) => /^https:\/\/chat\.qwen\.ai\//.test(u) },
+    { id: 'doubao',   label: '豆包',      url: 'https://www.doubao.com/chat/',
+      test: (u) => /^https:\/\/www\.doubao\.com\//.test(u) },
+    { id: 'yuanbao',  label: '元宝',      url: 'https://yuanbao.tencent.com/chat/',
+      test: (u) => /^https:\/\/yuanbao\.tencent\.com\//.test(u) },
   ];
 
+  function pickForwardSite() {
+    return FORWARD_TARGETS.find((t) => t.test(location.href)) || null;
+  }
+
   const FORWARD_CSS = `
-    .__aem-forward-row{display:flex;gap:6px;margin:6px 0 4px;flex-wrap:wrap;justify-content:flex-end;pointer-events:auto}
-    .__aem-forward-btn{cursor:pointer;font-size:12px;line-height:1.5;padding:3px 10px;border-radius:12px;
-      border:1px solid rgba(120,120,120,.35);background:rgba(255,255,255,.7);color:#3f3f46;
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-      transition:background .15s,color .15s,border-color .15s}
-    .__aem-forward-btn:hover{background:#2563eb;color:#fff;border-color:#2563eb}
+    .__aem-forward-row{display:inline-flex !important;gap:6px !important;margin:6px 0 !important;align-items:center !important;justify-content:flex-end !important;pointer-events:auto !important;position:relative !important;z-index:1 !important}
+    .__aem-forward-row-host{display:flex !important;justify-content:flex-end !important;width:100% !important;margin:6px 0 !important}
+    .__aem-forward-btn{cursor:pointer !important;font-size:12px !important;line-height:1.5 !important;padding:3px 10px !important;border-radius:12px !important;
+      border:1px solid #2563eb !important;background:#eff6ff !important;color:#1d4ed8 !important;display:inline-flex !important;align-items:center !important;gap:4px !important;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important;transition:background .15s,color .15s !important}
+    .__aem-forward-btn:hover{background:#2563eb !important;color:#fff !important}
+
+    .__aem-forward-menu{display:none !important;position:absolute !important;right:0 !important;top:calc(100% + 4px) !important;
+      min-width:160px !important;background:#fff !important;color:#1f2937 !important;
+      border:1px solid #d4d4d8 !important;border-radius:8px !important;padding:4px !important;
+      box-shadow:0 6px 18px rgba(0,0,0,.14) !important;z-index:2147483641 !important;
+      flex-direction:column !important;gap:1px !important;max-height:60vh !important;overflow:auto !important}
+    .__aem-forward-row.__aem-open .__aem-forward-menu{display:flex !important}
+    .__aem-forward-row.__aem-menu-up .__aem-forward-menu{top:auto !important;bottom:calc(100% + 4px) !important}
+    .__aem-forward-menu-item{display:block !important;padding:6px 12px !important;
+      background:transparent !important;border:none !important;color:inherit !important;
+      cursor:pointer !important;text-align:left !important;border-radius:4px !important;
+      font-size:13px !important;line-height:1.4 !important;font-family:inherit !important;width:100% !important}
+    .__aem-forward-menu-item:hover{background:#f1f5f9 !important}
+
+    .__aem-fwd-panel{position:fixed !important;right:16px !important;bottom:16px !important;z-index:2147483640 !important;
+      background:#fff !important;color:#1f2937 !important;border:1px solid #d4d4d8 !important;border-radius:10px !important;
+      box-shadow:0 6px 18px rgba(0,0,0,.12) !important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif !important;
+      font-size:13px !important;width:300px !important;overflow:hidden !important}
+    .__aem-fwd-head{display:flex !important;align-items:center !important;justify-content:space-between !important;padding:8px 12px !important;cursor:pointer !important;font-weight:600 !important;background:#f4f4f5 !important;user-select:none !important}
+    .__aem-fwd-head-mini{font-weight:400 !important;font-size:11px !important;color:#71717a !important}
+    .__aem-fwd-body{padding:6px 12px 10px !important;max-height:260px !important;overflow:auto !important}
+    .__aem-fwd-item{padding:8px 0 !important;border-top:1px solid #f1f5f9 !important}
+    .__aem-fwd-item:first-child{border-top:none !important}
+    .__aem-fwd-q{color:#52525b !important;font-size:12px !important;margin-bottom:6px !important;
+      display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;word-break:break-word !important}
+    .__aem-fwd-empty{color:#a1a1aa !important;font-size:12px !important;padding:8px 0 !important}
+    .__aem-fwd-panel.__aem-collapsed .__aem-fwd-body{display:none !important}
     @media (prefers-color-scheme: dark){
-      .__aem-forward-btn{background:rgba(40,40,40,.6);color:#e4e4e7;border-color:rgba(200,200,200,.25)}
+      .__aem-forward-btn{background:#1e3a8a !important;color:#dbeafe !important;border-color:#3b82f6 !important}
+      .__aem-forward-btn:hover{background:#2563eb !important;color:#fff !important}
+      .__aem-forward-menu{background:#1f2937 !important;color:#f4f4f5 !important;border-color:#374151 !important}
+      .__aem-forward-menu-item:hover{background:#374151 !important}
+      .__aem-fwd-panel{background:#1f2937 !important;color:#f4f4f5 !important;border-color:#374151 !important}
+      .__aem-fwd-head{background:#111827 !important}
+      .__aem-fwd-head-mini{color:#a1a1aa !important}
+      .__aem-fwd-item{border-top-color:#374151 !important}
+      .__aem-fwd-q{color:#d4d4d8 !important}
     }
   `;
 
@@ -367,142 +436,286 @@
     (document.head || document.documentElement).appendChild(style);
   }
 
+  function openForwardTarget(target, question) {
+    const url = target.url + '#__aem_q=' + encodeURIComponent(question);
+    log('forward → open', target.id, url.slice(0, 80) + '...');
+    window.open(url, '_blank', 'noopener');
+  }
+
   function buildForwardRow(question, currentId) {
+    const targets = FORWARD_TARGETS.filter((t) => t.id !== currentId);
+    if (targets.length === 0) return null;
+
     const row = document.createElement('div');
     row.className = '__aem-forward-row';
     row.dataset.aemForwardRow = '1';
-    let added = 0;
-    for (const t of FORWARD_TARGETS) {
-      if (t.id === currentId) continue;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = '__aem-forward-btn';
-      btn.textContent = `问 ${t.label}`;
-      btn.title = `在新标签页打开 ${t.label} 并自动填入此问题`;
-      btn.addEventListener('click', (ev) => {
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = '__aem-forward-btn';
+    trigger.textContent = `↗ 转发到其他 AI`;
+    trigger.title = '在新标签页打开目标 AI 并自动填入此问题';
+
+    const menu = document.createElement('div');
+    menu.className = '__aem-forward-menu';
+
+    for (const t of targets) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = '__aem-forward-menu-item';
+      item.textContent = t.label;
+      item.addEventListener('click', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
-        const url = t.url + '#__aem_q=' + encodeURIComponent(question);
-        window.open(url, '_blank', 'noopener');
+        openForwardTarget(t, question);
+        row.classList.remove('__aem-open');
       });
-      row.appendChild(btn);
-      added++;
+      menu.appendChild(item);
     }
-    return added > 0 ? row : null;
+
+    trigger.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      // 关闭其他打开的菜单
+      document.querySelectorAll('.__aem-forward-row.__aem-open').forEach((r) => {
+        if (r !== row) r.classList.remove('__aem-open');
+      });
+      // 决定菜单展开方向：行所在位置若靠近视口底部，菜单向上展开
+      const r = row.getBoundingClientRect();
+      if (window.innerHeight - r.bottom < 240) row.classList.add('__aem-menu-up');
+      else row.classList.remove('__aem-menu-up');
+      row.classList.toggle('__aem-open');
+    });
+
+    row.appendChild(trigger);
+    row.appendChild(menu);
+    return row;
   }
 
-  // ---- 输入捕获：记录用户刚发送的问题 ----
-  const pendingQuestions = []; // FIFO，避免连发被覆盖
-  const MAX_PENDING = 8;
-
-  function readInputValue(el) {
-    if (!el) return '';
-    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return (el.value || '').trim();
-    if (el.getAttribute && el.getAttribute('contenteditable') === 'true') {
-      return (el.innerText || el.textContent || '').trim();
-    }
-    return '';
+  let globalMenuCloseInstalled = false;
+  function installGlobalMenuClose() {
+    if (globalMenuCloseInstalled) return;
+    globalMenuCloseInstalled = true;
+    document.addEventListener('click', (ev) => {
+      document.querySelectorAll('.__aem-forward-row.__aem-open').forEach((r) => {
+        if (!r.contains(ev.target)) r.classList.remove('__aem-open');
+      });
+    }, true);
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Escape') return;
+      document.querySelectorAll('.__aem-forward-row.__aem-open').forEach((r) => r.classList.remove('__aem-open'));
+    }, true);
   }
 
   function findVisibleInput() {
-    const cands = [
+    const cands = [];
+    for (const c of [
       ...document.querySelectorAll('textarea'),
       ...document.querySelectorAll('[contenteditable="true"]'),
-    ];
-    for (const c of cands) {
+    ]) {
       if (!c.offsetParent) continue;
       const r = c.getBoundingClientRect();
       if (r.width < 80 || r.height < 16) continue;
-      return c;
+      if (r.bottom < 0 || r.top > window.innerHeight) continue;
+      cands.push({ el: c, r });
     }
-    return null;
+    if (cands.length === 0) return null;
+    // 偏好：靠底部（聊天框通常在底部）；若 bottom 接近则取面积更大者
+    cands.sort((a, b) => {
+      const diff = b.r.bottom - a.r.bottom;
+      if (Math.abs(diff) > 40) return diff;
+      return (b.r.width * b.r.height) - (a.r.width * a.r.height);
+    });
+    return cands[0].el;
   }
 
-  function pushPending(text) {
-    if (!text) return;
-    if (pendingQuestions[pendingQuestions.length - 1] === text) return;
-    pendingQuestions.push(text);
-    if (pendingQuestions.length > MAX_PENDING) pendingQuestions.shift();
+  // ---- 结构性识别用户气泡 ----
+  // 启发式：元素有背景色或圆角 + 子树相对父容器明显右对齐 + 包含文本
+  // 不依赖任何站点 class，跨豆包 / DeepSeek 通用
+  const attachedBubbles = new WeakSet();
+
+  function hasBubbleStyle(el) {
+    if (!el || !el.tagName) return false;
+    const cs = getComputedStyle(el);
+    const bg = cs.backgroundColor || '';
+    const hasBg = bg && bg !== 'transparent' && !/rgba?\(\s*0,\s*0,\s*0,\s*0\s*\)/.test(bg);
+    const hasRadius = parseFloat(cs.borderRadius) >= 4;
+    return hasBg || hasRadius;
   }
 
-  function captureInputs() {
-    document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
-      const v = readInputValue(e.target);
-      if (v) pushPending(v);
-    }, true);
-
-    // 点击发送按钮兜底（启发式：aria-label/类名带 send/发送）
-    document.addEventListener('click', (e) => {
-      const t = e.target;
-      if (!t || !t.closest) return;
-      const sendBtn = t.closest('button[aria-label*="发送"], button[aria-label*="Send" i], button[data-testid*="send" i]');
-      if (!sendBtn) return;
-      const input = findVisibleInput();
-      const v = input ? readInputValue(input) : '';
-      if (v) pushPending(v);
-    }, true);
-  }
-
-  // ---- 在用户气泡下注入按钮 ----
-  function findExactTextElement(text) {
-    // 选「innerText 恰好等于 text、子树最小」的元素：通常就是气泡里的文字容器
-    let best = null;
-    let bestSize = Infinity;
-    const all = document.body.querySelectorAll('div,p,span,pre');
-    for (const el of all) {
-      if (el.children.length > 30) continue;
-      if (el.closest('textarea,[contenteditable="true"]')) continue;
-      const t = (el.innerText || '').trim();
-      if (t !== text) continue;
-      const size = el.getElementsByTagName('*').length;
-      if (size < bestSize) { best = el; bestSize = size; }
-    }
-    return best;
-  }
-
-  function findBubbleBlock(el) {
-    // 向上找到一个块级父节点（不是 inline）；若再上一层是常见 flex 行容器就停在这里
-    let cur = el;
-    for (let i = 0; i < 6 && cur.parentElement; i++) {
-      const display = getComputedStyle(cur).display;
-      if (display && display !== 'inline' && display !== 'contents') {
-        const parent = cur.parentElement;
-        const pcs = getComputedStyle(parent);
-        if (pcs.display.includes('flex') || pcs.display.includes('grid') || parent === document.body) return cur;
+  function isRightAlignedRelative(el) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 30) return false;
+    let p = el.parentElement;
+    for (let i = 0; i < 6 && p && p !== document.body; i++) {
+      const pr = p.getBoundingClientRect();
+      if (pr.width >= r.width + 60) {
+        const rightGap = pr.right - r.right;
+        const leftGap = r.left - pr.left;
+        return leftGap > rightGap + 40;
       }
+      p = p.parentElement;
+    }
+    return false;
+  }
+
+  function findOutermostStyledBubble(el) {
+    let cur = el;
+    while (cur.parentElement && hasBubbleStyle(cur.parentElement) && isRightAlignedRelative(cur.parentElement)) {
       cur = cur.parentElement;
     }
     return cur;
   }
 
-  function tryAttach(currentId) {
-    if (pendingQuestions.length === 0) return;
-    for (let i = pendingQuestions.length - 1; i >= 0; i--) {
-      const q = pendingQuestions[i];
-      const textEl = findExactTextElement(q);
-      if (!textEl) continue;
-      const block = findBubbleBlock(textEl);
-      const host = block.parentElement || block;
-      // 避免重复挂载：同一 host 内已有按钮行就跳过
-      if (host.querySelector(':scope > [data-aem-forward-row]')) {
-        pendingQuestions.splice(i, 1);
+  function isExcluded(el) {
+    if (!el) return true;
+    if (el.tagName === 'BUTTON' || el.closest('button')) return true;
+    if (el.getAttribute && el.getAttribute('role') === 'button') return true;
+    if (el.closest('.__aem-fwd-panel,.__aem-toast-container')) return true;
+    if (el.closest('textarea,[contenteditable="true"]')) return true;
+    if (el.closest('header,nav,aside,footer')) return true;
+    if (el.closest('[data-aem-bubble]')) return true; // 已挂的气泡内部都跳过
+    return false;
+  }
+
+  function extractBubbleText(bubble) {
+    return (bubble.innerText || '').replace(/ /g, ' ').trim();
+  }
+
+  // 浮动面板状态
+  let panelEl = null;
+  let panelCurrentId = '';
+  const panelQueue = []; // 按出现顺序保留扫到的用户问题
+  const seenTexts = new Set();
+  let lastForwardUrl = '';
+
+  function scanAndAttach(currentId) {
+    if (location.href !== lastForwardUrl) {
+      lastForwardUrl = location.href;
+      panelQueue.length = 0;
+      seenTexts.clear();
+      renderPanel();
+    }
+
+    const all = document.body.querySelectorAll('div,section,article,p,li');
+    let attached = 0;
+    for (const el of all) {
+      if (attachedBubbles.has(el)) continue;
+      if (isExcluded(el)) continue;
+      if (!hasBubbleStyle(el)) continue;
+
+      const r = el.getBoundingClientRect();
+      if (r.width < 30 || r.height < 24) continue;
+      if (r.width > window.innerWidth * 0.95) continue;
+      if (el.children.length > 80) continue;
+
+      if (!isRightAlignedRelative(el)) continue;
+
+      const bubble = findOutermostStyledBubble(el);
+      if (attachedBubbles.has(bubble)) continue;
+      if (bubble.querySelector(':scope [data-aem-forward-row]')) {
+        attachedBubbles.add(bubble);
         continue;
       }
-      const row = buildForwardRow(q, currentId);
-      if (!row) { pendingQuestions.splice(i, 1); continue; }
-      ensureForwardCss();
-      if (block.nextSibling) host.insertBefore(row, block.nextSibling);
+
+      const text = extractBubbleText(bubble);
+      if (!text || text.length > 8000) continue;
+
+      const row = buildForwardRow(text, currentId);
+      if (!row) continue;
+
+      const host = bubble.parentElement || bubble;
+      if (bubble.nextSibling) host.insertBefore(row, bubble.nextSibling);
       else host.appendChild(row);
-      pendingQuestions.splice(i, 1);
+
+      bubble.dataset.aemBubble = '1';
+      attachedBubbles.add(bubble);
+      attached++;
+
+      const norm = text.replace(/\s+/g, ' ').trim();
+      if (!seenTexts.has(norm)) {
+        seenTexts.add(norm);
+        panelQueue.push(text);
+        if (panelQueue.length > 50) panelQueue.shift();
+      }
+    }
+    if (attached > 0) {
+      log(`attached forward rows: +${attached} (panel size=${panelQueue.length})`);
+      renderPanel();
     }
   }
 
-  function watchForUserBubbles(currentId) {
-    const obs = new MutationObserver(() => tryAttach(currentId));
+  let scanScheduled = false;
+  function scheduleScan(currentId) {
+    if (scanScheduled) return;
+    scanScheduled = true;
+    requestAnimationFrame(() => {
+      scanScheduled = false;
+      scanAndAttach(currentId);
+    });
+  }
+
+  function watchUserBubbles(currentId) {
+    const obs = new MutationObserver(() => scheduleScan(currentId));
     if (document.body) obs.observe(document.body, { childList: true, subtree: true });
-    // 兜底定时：处理动画/异步渲染
-    setInterval(() => tryAttach(currentId), 1500);
+    setInterval(() => scanAndAttach(currentId), 2000);
+    // 初次进入页面 / 路由切换后，立即扫几次覆盖历史消息渲染时序
+    setTimeout(() => scanAndAttach(currentId), 200);
+    setTimeout(() => scanAndAttach(currentId), 1000);
+    setTimeout(() => scanAndAttach(currentId), 2500);
+  }
+
+  // ---- 右下角浮动面板：列出当前会话已识别出的所有用户问题 ----
+  function ensurePanel(currentId) {
+    panelCurrentId = currentId;
+    if (panelEl && document.body && document.body.contains(panelEl)) return panelEl;
+    panelEl = document.createElement('div');
+    panelEl.className = '__aem-fwd-panel __aem-collapsed';
+    panelEl.innerHTML = `
+      <div class="__aem-fwd-head">
+        <span>↗ 跨 AI 转发<span class="__aem-fwd-head-mini" data-mini> （0）</span></span>
+        <span data-toggle>▾</span>
+      </div>
+      <div class="__aem-fwd-body" data-body></div>
+    `;
+    panelEl.querySelector('.__aem-fwd-head').addEventListener('click', () => {
+      panelEl.classList.toggle('__aem-collapsed');
+      panelEl.querySelector('[data-toggle]').textContent =
+        panelEl.classList.contains('__aem-collapsed') ? '▾' : '▴';
+    });
+    (document.body || document.documentElement).appendChild(panelEl);
+    renderPanel();
+    return panelEl;
+  }
+
+  function renderPanel() {
+    if (!panelEl) return;
+    const body = panelEl.querySelector('[data-body]');
+    const mini = panelEl.querySelector('[data-mini]');
+    mini.textContent = ` （${panelQueue.length}）`;
+    body.textContent = '';
+    if (panelQueue.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = '__aem-fwd-empty';
+      empty.textContent = '该会话尚未识别到用户消息（或刚切换会话还在扫描）';
+      body.appendChild(empty);
+      return;
+    }
+    for (let i = panelQueue.length - 1; i >= 0; i--) {
+      const q = panelQueue[i];
+      const item = document.createElement('div');
+      item.className = '__aem-fwd-item';
+      const qDiv = document.createElement('div');
+      qDiv.className = '__aem-fwd-q';
+      qDiv.textContent = q;
+      item.appendChild(qDiv);
+      const row = buildForwardRow(q, panelCurrentId);
+      if (row) {
+        row.style.justifyContent = 'flex-start';
+        item.appendChild(row);
+      }
+      body.appendChild(item);
+    }
   }
 
   // ---- 目标侧：读取 hash 并回填输入框 ----
@@ -574,20 +787,27 @@
   // ============================================================
   // 启动
   // ============================================================
-  const handler = pickHandler();
-  if (!handler) {
-    log('no handler matches current URL:', location.href);
+  const handler = pickHandler();        // 可选：自动切深度思考 / 专家模式
+  const fwdSite = pickForwardSite();    // 可选：跨 AI 转发
+
+  if (!handler && !fwdSite) {
+    log('no match for current URL:', location.href);
     return;
   }
-  log('active handler:', handler.id);
 
-  if (FORWARD_TARGETS.some((t) => t.id === handler.id)) {
+  if (fwdSite) {
+    log('forward site:', fwdSite.id);
     ensureForwardCss();
-    captureInputs();
-    watchForUserBubbles(handler.id);
-    maybeFillForwardedQuestion(handler.label);
+    installGlobalMenuClose();
+    ensurePanel(fwdSite.id);
+    watchUserBubbles(fwdSite.id);
+    maybeFillForwardedQuestion(fwdSite.label);
   }
 
-  trigger(0);
+  if (handler) {
+    log('expert-mode handler:', handler.id);
+    trigger(0);
+  }
+
   watchRouteChanges();
 })();
