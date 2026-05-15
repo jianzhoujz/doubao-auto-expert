@@ -12,22 +12,34 @@
 
 ## 为什么需要这个脚本？
 
-主流 AI 助手的网页版几乎都提供了「普通模式」和「深度思考 / 专家模式」之分。前者响应快但浅，后者更慢但答得更深、更可靠。问题在于：**它们默认都是普通模式**，每次打开页面、新建对话、刷新都得手动再切一遍。
+这个脚本一次解决两个 AI 网页版的高频痛点：
 
-**AI Auto Expert Mode** 一次性帮你把这件事自动化，目前覆盖：
+1. **自动切换深度思考 / 专家模式** —— 豆包 / DeepSeek / 通义千问默认都是「快速 / 普通模式」，响应快但答得浅，每次新建对话、刷新、切会话都得再手动点一遍。脚本一次性把它自动化。
+2. **一键跨 AI 转发问题** —— 觉得 A 答得不好想看看 B、C 怎么答时，以前要复制问题 → 新开标签 → 粘贴 → 发送。装上脚本后，每条用户消息下方都会出现一个「↗ 转发到其他 AI」下拉按钮，点一下即在新标签打开目标 AI 并自动回填问题，省去复制粘贴的全部步骤。
 
-| 站点 | 默认模式 | 自动切到 |
-|------|----------|----------|
-| [豆包](https://www.doubao.com/chat/) | 快速 / 思考 | 专家 |
-| [DeepSeek](https://chat.deepseek.com/) | 快速模式 | 专家模式 |
-| [通义千问](https://www.qianwen.com/) | 默认 | 深度思考 |
+**覆盖站点：**
 
-> 💡 暂不支持 Microsoft Copilot：Edge 出于安全策略禁止扩展 / 用户脚本注入到 `copilot.microsoft.com`，Tampermonkey 也无法在该域名运行。
+| 站点 | 自动切换深度思考 / 专家模式 | 跨 AI 转发 |
+|------|------------------------------|-----------|
+| [ChatGPT](https://chatgpt.com/) | — | ✅ |
+| [Claude](https://claude.ai/) | — | ✅ |
+| [Gemini](https://gemini.google.com/) | — | ✅ |
+| [智谱](https://chatglm.cn/main/alltoolsdetail?lang=zh) | — | ✅ |
+| [Kimi](https://www.kimi.com/) | — | ✅ |
+| [DeepSeek](https://chat.deepseek.com/) | ✅ 快速模式 → 专家模式 | ✅ |
+| [通义千问](https://www.qianwen.com/) | ✅ 默认 → 深度思考 | ✅ |
+| [Qwen](https://chat.qwen.ai/) | — | ✅ |
+| [豆包](https://www.doubao.com/chat/) | ✅ 快速 / 思考 → 专家 | ✅ |
+| [元宝](https://yuanbao.tencent.com/chat/) | — | ✅ |
 
-每次切换完成后，右上角会弹出一个轻量 Toast 提示：
+> 💡 暂不支持 Microsoft Copilot：Edge / Chrome 出于安全策略禁止扩展和用户脚本注入到 `copilot.microsoft.com`（微软自家域名属于受保护域），Tampermonkey 无法在该域名运行，自动切换和跨 AI 转发都无法启用。后续浏览器策略放开会重新评估。
+
+每次自动切换完成后，右上角会弹出一个轻量 Toast 提示：
 - ✅ **绿色 = 切换成功**：显示从哪个模式切到了哪个模式
 - 🔵 **蓝色 = 无需切换**：说明当前已是目标模式
 - 🔴 **红色 = 切换失败**：附带原因，方便排查（DOM 变更 / 选项找不到 / 状态识别失败 等）
+
+跨 AI 转发是被动 UI，无 Toast；按钮就挂在每条用户消息气泡下方，右下角还有一个浮动面板汇总当前会话已识别的所有问题作为兜底入口。
 
 ## 核心特性
 
@@ -44,6 +56,10 @@
 ⏱️ **智能重试** —— 页面加载速度受网络影响，脚本采用最多 30 次、每秒一次的轮询策略，确保慢网下也能可靠完成切换；超时后会给出明确的失败 Toast。
 
 🛡️ **安全无侵入** —— 不修改页面数据，不发送任何网络请求，不需要额外权限（`@grant none`）。纯 DOM 操作，干净透明。
+
+↗ **跨 AI 一键转发** —— 用户消息气泡下方注入下拉按钮，点击即在新标签打开目标 AI；问题通过 URL hash 传递（不经过任何服务器），目标侧自动回填到输入框，textarea 与 contenteditable 都兼容。
+
+🤖 **结构性气泡识别** —— 转发按钮不依赖捕获你"按下回车"的瞬间，而是按"有背景色或圆角 + 相对父容器明显右对齐"扫描整页，因此**历史消息和切回的老会话**也会被自动挂上按钮，跨站点通用，无需为每个 AI 单独写选择器。
 
 ## 快速开始
 
@@ -83,11 +99,18 @@
 
 安装完成后，无需任何额外配置。打开下面任意一个站点，脚本会自动接管：
 
-- [豆包](https://www.doubao.com/chat/)
+- [ChatGPT](https://chatgpt.com/)
+- [Claude](https://claude.ai/)
+- [Gemini](https://gemini.google.com/)
+- [智谱](https://chatglm.cn/main/alltoolsdetail?lang=zh)
+- [Kimi](https://www.kimi.com/)
 - [DeepSeek](https://chat.deepseek.com/)
 - [通义千问](https://www.qianwen.com/)
+- [Qwen](https://chat.qwen.ai/)
+- [豆包](https://www.doubao.com/chat/)
+- [元宝](https://yuanbao.tencent.com/chat/)
 
-页面加载完成后右上角会出现一个 Toast，告诉你切换结果。新建对话、切换历史对话也会按需重新执行。
+豆包 / DeepSeek / 通义千问 上脚本会自动切到专家 / 深度思考模式（右上角 Toast 提示）；全部 10 个站点都会在每条用户消息气泡下方挂上「↗ 转发到其他 AI」下拉按钮，点击即可一键跳转到其他 AI 并自动回填问题。新建对话 / 切换历史对话 / 滚动加载老消息都会重新扫描。
 
 ## 工作原理
 
@@ -146,7 +169,15 @@
 
 **Q: 为什么不支持 Microsoft Copilot？**
 
-Edge / Chrome 出于安全策略禁止扩展和用户脚本注入到 `copilot.microsoft.com`（微软自家域名属于受保护域），Tampermonkey 没法在该域名下执行脚本，因此暂时无法支持。后续如果浏览器策略放开会重新评估。
+Edge / Chrome 出于安全策略禁止扩展和用户脚本注入到 `copilot.microsoft.com`（微软自家域名属于受保护域），Tampermonkey 没法在该域名下执行脚本，因此自动切换和跨 AI 转发都无法启用。后续如果浏览器策略放开会重新评估。
+
+**Q: 转发按钮没有出现在用户消息下方？**
+
+气泡识别基于"有背景色或圆角 + 相对父容器明显右对齐"的通用启发式。如果某站点的用户气泡渲染成居中或全宽无背景的样式，会被漏过。可以打开 DevTools 控制台搜 `[AutoExpert]` 看是否有 `attached forward rows` 日志；右下角还有「↗ 跨 AI 转发」浮动面板作为兜底，能列出当前会话所有已识别的问题。如果某个站点持续漏识别，请把 DOM 截图发到 Issue。
+
+**Q: 转发后目标 AI 的输入框没有自动填入？**
+
+目标侧通过通用 textarea / contenteditable 探测找输入框（优先选靠视口底部 + 面积更大的那个）。如果目标 AI 把输入框放在 Shadow DOM 里或用了其他非常见结构，会找不到，此时右上角会出现红色 Toast 提示「自动填入失败」。问题串以 URL hash (`#__aem_q=…`) 传递，不会发到任何服务器。
 
 ## 兼容性
 

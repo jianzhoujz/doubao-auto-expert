@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.0
-// @description  在 ChatGPT / Claude / Gemini / Copilot / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
+// @version      3.0.1
+// @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
 // @supportURL   https://github.com/jianzhoujz/doubao-auto-expert/issues
@@ -11,7 +11,6 @@
 // @match        https://chatgpt.com/*
 // @match        https://claude.ai/*
 // @match        https://gemini.google.com/*
-// @match        https://copilot.microsoft.com/*
 // @match        https://chatglm.cn/*
 // @match        https://www.kimi.com/*
 // @match        https://kimi.com/*
@@ -359,8 +358,6 @@
       test: (u) => /^https:\/\/claude\.ai\//.test(u) },
     { id: 'gemini',   label: 'Gemini',    url: 'https://gemini.google.com/app',
       test: (u) => /^https:\/\/gemini\.google\.com\//.test(u) },
-    { id: 'copilot',  label: 'Copilot',   url: 'https://copilot.microsoft.com/',
-      test: (u) => /^https:\/\/copilot\.microsoft\.com\//.test(u) },
     { id: 'chatglm',  label: '智谱',      url: 'https://chatglm.cn/main/alltoolsdetail?lang=zh',
       test: (u) => /^https:\/\/chatglm\.cn\//.test(u) },
     { id: 'kimi',     label: 'Kimi',      url: 'https://www.kimi.com/',
