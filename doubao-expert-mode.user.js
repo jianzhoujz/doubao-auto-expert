@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.2
+// @version      3.0.3
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -379,8 +379,8 @@
   }
 
   const FORWARD_CSS = `
-    .__aem-forward-row{display:inline-flex !important;gap:6px !important;margin:6px 0 !important;align-items:center !important;justify-content:flex-end !important;pointer-events:auto !important;position:relative !important;z-index:1 !important}
-    .__aem-forward-row-host{display:flex !important;justify-content:flex-end !important;width:100% !important;margin:6px 0 !important}
+    .__aem-forward-row{display:inline-flex !important;gap:6px !important;align-items:center !important;justify-content:flex-end !important;pointer-events:auto !important;position:relative !important;z-index:1 !important}
+    .__aem-forward-row-host{display:flex !important;justify-content:flex-end !important;width:100% !important;margin:6px 0 !important;align-self:flex-end !important}
     .__aem-forward-btn{cursor:pointer !important;font-size:12px !important;line-height:1.5 !important;padding:3px 10px !important;border-radius:12px !important;
       border:1px solid #2563eb !important;background:#eff6ff !important;color:#1d4ed8 !important;display:inline-flex !important;align-items:center !important;gap:4px !important;
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important;transition:background .15s,color .15s !important}
@@ -644,10 +644,30 @@
         continue;
       }
 
-      const host = bubble.parentElement;
-      if (!host) continue;
-      // 横向 flex 容器：把 row 塞进去会沿水平方向累积，跳过
-      if (isHorizontalFlex(host)) {
+      const directHost = bubble.parentElement;
+      if (!directHost) continue;
+
+      // 选择插入位置：
+      //   directHost 若是横向 flex（典型为单元素 wrapper，如豆包的
+      //   `<div class="flex justify-end">`），跳到祖父（垂直消息列表），
+      //   把 row 作为 host 的下一个兄弟插入；这样既不会沿水平堆积，
+      //   也能与原气泡保持在同一消息行下方。
+      let insertHost = directHost;
+      let insertAfter = bubble;
+      if (isHorizontalFlex(directHost) && directHost.parentElement && directHost.children.length <= 2) {
+        insertHost = directHost.parentElement;
+        insertAfter = directHost;
+      }
+      if (isHorizontalFlex(insertHost)) {
+        // 升级后仍是横向 flex，认为不安全，跳过
+        attachedBubbles.add(bubble);
+        bubble.dataset.aemBubble = '1';
+        continue;
+      }
+
+      // 在真正的插入点位置做 dedupe（防止多次扫描造成重复挂载）
+      const existingNext = insertAfter.nextElementSibling;
+      if (existingNext && existingNext.dataset && existingNext.dataset.aemForwardRow === '1') {
         attachedBubbles.add(bubble);
         bubble.dataset.aemBubble = '1';
         continue;
@@ -659,8 +679,15 @@
       const row = buildForwardRow(text, currentId);
       if (!row) continue;
 
-      if (bubble.nextSibling) host.insertBefore(row, bubble.nextSibling);
-      else host.appendChild(row);
+      // 用一个 wrapper 包裹，确保在垂直 flex / 块级容器里都能右对齐
+      const wrapper = document.createElement('div');
+      wrapper.className = '__aem-forward-row-host';
+      wrapper.dataset.aemForwardRow = '1';
+      wrapper.appendChild(row);
+      delete row.dataset.aemForwardRow; // 标记移到 wrapper 上，避免重复
+
+      if (insertAfter.nextSibling) insertHost.insertBefore(wrapper, insertAfter.nextSibling);
+      else insertHost.appendChild(wrapper);
 
       bubble.dataset.aemBubble = '1';
       attachedBubbles.add(bubble);
