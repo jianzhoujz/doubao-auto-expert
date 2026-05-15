@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.1
+// @version      3.0.2
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -527,7 +527,7 @@
   }
 
   // ---- 结构性识别用户气泡 ----
-  // 启发式：元素有背景色或圆角 + 子树相对父容器明显右对齐 + 包含文本
+  // 启发式：元素同时有背景色 + 圆角（典型气泡视觉），且子树相对父容器明显右对齐
   // 不依赖任何站点 class，跨豆包 / DeepSeek 通用
   const attachedBubbles = new WeakSet();
 
@@ -536,8 +536,8 @@
     const cs = getComputedStyle(el);
     const bg = cs.backgroundColor || '';
     const hasBg = bg && bg !== 'transparent' && !/rgba?\(\s*0,\s*0,\s*0,\s*0\s*\)/.test(bg);
-    const hasRadius = parseFloat(cs.borderRadius) >= 4;
-    return hasBg || hasRadius;
+    const hasRadius = parseFloat(cs.borderRadius) >= 6;
+    return hasBg && hasRadius; // 同时满足，缩小误判面
   }
 
   function isRightAlignedRelative(el) {
@@ -564,11 +564,21 @@
     return cur;
   }
 
+  function isHorizontalFlex(el) {
+    if (!el || !el.tagName) return false;
+    const cs = getComputedStyle(el);
+    if (!cs.display || !cs.display.includes('flex')) return false;
+    const dir = cs.flexDirection || 'row';
+    return dir === 'row' || dir === 'row-reverse';
+  }
+
   function isExcluded(el) {
     if (!el) return true;
     if (el.tagName === 'BUTTON' || el.closest('button')) return true;
     if (el.getAttribute && el.getAttribute('role') === 'button') return true;
     if (el.closest('.__aem-fwd-panel,.__aem-toast-container')) return true;
+    if (el.closest('.__aem-forward-row,.__aem-forward-menu')) return true; // 自家注入的 DOM
+    if (el.closest('[data-aem-forward-row]')) return true;
     if (el.closest('textarea,[contenteditable="true"]')) return true;
     if (el.closest('header,nav,aside,footer')) return true;
     if (el.closest('[data-aem-bubble]')) return true; // 已挂的气泡内部都跳过
@@ -585,24 +595,38 @@
   const panelQueue = []; // 按出现顺序保留扫到的用户问题
   const seenTexts = new Set();
   let lastForwardUrl = '';
+  let totalAttached = 0;
+  const MAX_PER_SCAN = 5;
+  const MAX_TOTAL = 60;
+
+  function cleanupForwardRows() {
+    document.querySelectorAll('[data-aem-forward-row]').forEach((el) => el.remove());
+    document.querySelectorAll('[data-aem-bubble]').forEach((el) => { delete el.dataset.aemBubble; });
+  }
 
   function scanAndAttach(currentId) {
     if (location.href !== lastForwardUrl) {
       lastForwardUrl = location.href;
       panelQueue.length = 0;
       seenTexts.clear();
+      totalAttached = 0;
+      cleanupForwardRows();
       renderPanel();
     }
+
+    if (totalAttached >= MAX_TOTAL) return;
 
     const all = document.body.querySelectorAll('div,section,article,p,li');
     let attached = 0;
     for (const el of all) {
+      if (attached >= MAX_PER_SCAN) break;
+      if (totalAttached + attached >= MAX_TOTAL) break;
       if (attachedBubbles.has(el)) continue;
       if (isExcluded(el)) continue;
       if (!hasBubbleStyle(el)) continue;
 
       const r = el.getBoundingClientRect();
-      if (r.width < 30 || r.height < 24) continue;
+      if (r.width < 80 || r.height < 32) continue;
       if (r.width > window.innerWidth * 0.95) continue;
       if (el.children.length > 80) continue;
 
@@ -610,18 +634,31 @@
 
       const bubble = findOutermostStyledBubble(el);
       if (attachedBubbles.has(bubble)) continue;
-      if (bubble.querySelector(':scope [data-aem-forward-row]')) {
+      if (bubble.dataset && bubble.dataset.aemBubble === '1') continue;
+
+      // 已是 forward-row 紧跟在气泡后面 → 跳过
+      const nextEl = bubble.nextElementSibling;
+      if (nextEl && nextEl.dataset && nextEl.dataset.aemForwardRow === '1') {
         attachedBubbles.add(bubble);
+        bubble.dataset.aemBubble = '1';
+        continue;
+      }
+
+      const host = bubble.parentElement;
+      if (!host) continue;
+      // 横向 flex 容器：把 row 塞进去会沿水平方向累积，跳过
+      if (isHorizontalFlex(host)) {
+        attachedBubbles.add(bubble);
+        bubble.dataset.aemBubble = '1';
         continue;
       }
 
       const text = extractBubbleText(bubble);
-      if (!text || text.length > 8000) continue;
+      if (!text || text.length < 2 || text.length > 8000) continue;
 
       const row = buildForwardRow(text, currentId);
       if (!row) continue;
 
-      const host = bubble.parentElement || bubble;
       if (bubble.nextSibling) host.insertBefore(row, bubble.nextSibling);
       else host.appendChild(row);
 
@@ -637,7 +674,9 @@
       }
     }
     if (attached > 0) {
-      log(`attached forward rows: +${attached} (panel size=${panelQueue.length})`);
+      totalAttached += attached;
+      log(`attached forward rows: +${attached} (total=${totalAttached}, panel=${panelQueue.length})`);
+      if (totalAttached >= MAX_TOTAL) warn(`reached MAX_TOTAL (${MAX_TOTAL})，停止继续扫描以防止误识别失控`);
       renderPanel();
     }
   }
