@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.8
+// @version      3.0.9
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -383,7 +383,11 @@
       test: (u) => /^https:\/\/www\.doubao\.com\//.test(u),
       userBubble: '.bg-g-send-msg-bubble-bg' },
     { id: 'yuanbao',  label: '元宝',      url: 'https://yuanbao.tencent.com/chat/',
-      test: (u) => /^https:\/\/yuanbao\.tencent\.com\//.test(u) },
+      test: (u) => /^https:\/\/yuanbao\.tencent\.com\//.test(u),
+      // 元宝用户气泡是右对齐的 .agent-chat__bubble--human（全宽 wrapper），
+      // 内部的真实彩色气泡 .agent-chat__bubble__content 太窄时会被启发式漏过；
+      // 直接选这个 wrapper，插入位置在 .agent-chat__list__item__content 里
+      userBubble: '.agent-chat__bubble--human' },
   ];
 
   function pickForwardSite() {
