@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.7
+// @version      3.0.8
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -369,7 +369,10 @@
       userBubble: '.conversation.question .question-text-style',
       excludeContent: '.copy-btn' },
     { id: 'kimi',     label: 'Kimi',      url: 'https://www.kimi.com/',
-      test: (u) => /^https:\/\/(www\.)?kimi\.com\//.test(u) },
+      test: (u) => /^https:\/\/(www\.)?kimi\.com\//.test(u),
+      // Kimi 用户气泡左对齐式：.segment-user 是行容器，.user-content 是纯文本子节点；
+      // 同级的 .segment-user-actions（编辑/复制/分享）不在 .user-content 内，不污染文本
+      userBubble: '.segment-user .user-content' },
     { id: 'deepseek', label: 'DeepSeek',  url: 'https://chat.deepseek.com/',
       test: (u) => /^https:\/\/chat\.deepseek\.com\//.test(u) },
     { id: 'qianwen',  label: '千问',      url: 'https://www.qianwen.com/',
@@ -791,18 +794,34 @@
       }
       if (el.getAttribute && el.getAttribute('contenteditable') === 'true') {
         el.focus();
-        // 清空 + 选区到末尾再插入
-        const sel = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        // execCommand 仍是 contenteditable 最可靠的"产生真实 InputEvent"路径
-        const ok = document.execCommand('insertText', false, text);
-        if (!ok) {
-          // 某些站点禁用了 execCommand：fallback 到 textContent + 手工 InputEvent
-          el.textContent = text;
-          el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+        const isSlate = el.getAttribute('data-slate-editor') === 'true';
+
+        if (isSlate) {
+          // 千问用 Slate.js（data-slate-editor="true"）：DOM 里有文本但 Slate 内部
+          // 模型不感知 execCommand，导致提交按钮一直灰。Slate 有专门的 onPaste
+          // 处理器从 clipboardData 读文本写入它的模型，所以合成 paste 事件最稳。
+          try {
+            const dt = new DataTransfer();
+            dt.setData('text/plain', text);
+            el.dispatchEvent(new ClipboardEvent('paste', {
+              bubbles: true, cancelable: true, clipboardData: dt,
+            }));
+          } catch (e) {
+            warn('Slate paste failed, falling back to execCommand', e);
+            document.execCommand('insertText', false, text);
+          }
+        } else {
+          // 通用 contenteditable
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          const ok = document.execCommand('insertText', false, text);
+          if (!ok) {
+            el.textContent = text;
+            el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+          }
         }
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
