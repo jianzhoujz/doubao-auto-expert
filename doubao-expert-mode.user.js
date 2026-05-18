@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.3
+// @version      3.0.4
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -350,7 +350,11 @@
   // ============================================================
   // 跨 AI 转发：捕获用户问题 → 用户气泡下放跳转按钮 + 右下角浮动面板兜底
   // ============================================================
-  // 每条配置 = { id, label, url（转发到此站时的目标 URL）, test（判断当前页是否是此站） }
+  // 每条配置 = {
+  //   id, label, url（转发到此站时的目标 URL）, test（判断当前页是否是此站）,
+  //   userBubble?  -- 已逆向过 DOM 的站点写明用户气泡 CSS 选择器；设置了就跳过通用启发式
+  //   excludeContent? -- 从气泡 innerText 中剔除的子元素 CSS 选择器（如 hover 才出现的"复制入框"按钮）
+  // }
   const FORWARD_TARGETS = [
     { id: 'chatgpt',  label: 'ChatGPT',   url: 'https://chatgpt.com/',
       test: (u) => /^https:\/\/chatgpt\.com\//.test(u) },
@@ -359,7 +363,11 @@
     { id: 'gemini',   label: 'Gemini',    url: 'https://gemini.google.com/app',
       test: (u) => /^https:\/\/gemini\.google\.com\//.test(u) },
     { id: 'chatglm',  label: '智谱',      url: 'https://chatglm.cn/main/alltoolsdetail?lang=zh',
-      test: (u) => /^https:\/\/chatglm\.cn\//.test(u) },
+      test: (u) => /^https:\/\/chatglm\.cn\//.test(u),
+      // 智谱用户消息左对齐、有用户名头部，无 bg/radius，启发式抓不到；
+      // .copy-btn 是 hover 才出现的"复制入框"按钮，需要从文本中剔除
+      userBubble: '.conversation.question .question-text-style',
+      excludeContent: '.copy-btn' },
     { id: 'kimi',     label: 'Kimi',      url: 'https://www.kimi.com/',
       test: (u) => /^https:\/\/(www\.)?kimi\.com\//.test(u) },
     { id: 'deepseek', label: 'DeepSeek',  url: 'https://chat.deepseek.com/',
@@ -369,7 +377,8 @@
     { id: 'qwen',     label: 'Qwen',      url: 'https://chat.qwen.ai/',
       test: (u) => /^https:\/\/chat\.qwen\.ai\//.test(u) },
     { id: 'doubao',   label: '豆包',      url: 'https://www.doubao.com/chat/',
-      test: (u) => /^https:\/\/www\.doubao\.com\//.test(u) },
+      test: (u) => /^https:\/\/www\.doubao\.com\//.test(u),
+      userBubble: '.bg-g-send-msg-bubble-bg' },
     { id: 'yuanbao',  label: '元宝',      url: 'https://yuanbao.tencent.com/chat/',
       test: (u) => /^https:\/\/yuanbao\.tencent\.com\//.test(u) },
   ];
@@ -386,13 +395,12 @@
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important;transition:background .15s,color .15s !important}
     .__aem-forward-btn:hover{background:#2563eb !important;color:#fff !important}
 
-    .__aem-forward-menu{display:none !important;position:absolute !important;right:0 !important;top:calc(100% + 4px) !important;
+    .__aem-forward-menu{display:none !important;position:fixed !important;
       min-width:160px !important;background:#fff !important;color:#1f2937 !important;
       border:1px solid #d4d4d8 !important;border-radius:8px !important;padding:4px !important;
-      box-shadow:0 6px 18px rgba(0,0,0,.14) !important;z-index:2147483641 !important;
+      box-shadow:0 6px 18px rgba(0,0,0,.18) !important;z-index:2147483647 !important;
       flex-direction:column !important;gap:1px !important;max-height:60vh !important;overflow:auto !important}
-    .__aem-forward-row.__aem-open .__aem-forward-menu{display:flex !important}
-    .__aem-forward-row.__aem-menu-up .__aem-forward-menu{top:auto !important;bottom:calc(100% + 4px) !important}
+    .__aem-forward-menu.__aem-visible{display:flex !important}
     .__aem-forward-menu-item{display:block !important;padding:6px 12px !important;
       background:transparent !important;border:none !important;color:inherit !important;
       cursor:pointer !important;text-align:left !important;border-radius:4px !important;
@@ -453,6 +461,8 @@
     trigger.textContent = `↗ 转发到其他 AI`;
     trigger.title = '在新标签页打开目标 AI 并自动填入此问题';
 
+    // 菜单 portal 到 body 用 position:fixed 渲染，避免被某些站点（如 DeepSeek）
+    // 祖先元素的 stacking context 截断；不靠 z-index 硬刚
     const menu = document.createElement('div');
     menu.className = '__aem-forward-menu';
 
@@ -465,7 +475,7 @@
         ev.preventDefault();
         ev.stopPropagation();
         openForwardTarget(t, question);
-        row.classList.remove('__aem-open');
+        hideForwardMenu(menu);
       });
       menu.appendChild(item);
     }
@@ -473,35 +483,80 @@
     trigger.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      // 关闭其他打开的菜单
-      document.querySelectorAll('.__aem-forward-row.__aem-open').forEach((r) => {
-        if (r !== row) r.classList.remove('__aem-open');
-      });
-      // 决定菜单展开方向：行所在位置若靠近视口底部，菜单向上展开
-      const r = row.getBoundingClientRect();
-      if (window.innerHeight - r.bottom < 240) row.classList.add('__aem-menu-up');
-      else row.classList.remove('__aem-menu-up');
-      row.classList.toggle('__aem-open');
+      if (menu.classList.contains('__aem-visible')) {
+        hideForwardMenu(menu);
+      } else {
+        showForwardMenu(menu, trigger);
+      }
     });
 
     row.appendChild(trigger);
-    row.appendChild(menu);
+    // menu 不放在 row 里，showForwardMenu 时再 portal 到 body
     return row;
+  }
+
+  function showForwardMenu(menu, trigger) {
+    // 关闭其他打开的菜单
+    document.querySelectorAll('.__aem-forward-menu.__aem-visible').forEach((m) => {
+      if (m !== menu) m.classList.remove('__aem-visible');
+    });
+    if (menu.parentElement !== document.body) {
+      document.body.appendChild(menu);
+    }
+    positionForwardMenu(menu, trigger);
+    menu.classList.add('__aem-visible');
+  }
+
+  function hideForwardMenu(menu) {
+    menu.classList.remove('__aem-visible');
+  }
+
+  function positionForwardMenu(menu, trigger) {
+    const r = trigger.getBoundingClientRect();
+    // 先临时显示以测量真实尺寸
+    const prevVis = menu.style.visibility;
+    menu.style.visibility = 'hidden';
+    menu.classList.add('__aem-visible');
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+    menu.style.right = 'auto';
+    menu.style.bottom = 'auto';
+    const mr = menu.getBoundingClientRect();
+    const menuH = mr.height || 280;
+    const menuW = mr.width || 160;
+    menu.classList.remove('__aem-visible');
+    menu.style.visibility = prevVis;
+
+    // 上下方向：底部空间不够就向上
+    let top;
+    if (r.bottom + 4 + menuH < window.innerHeight) {
+      top = r.bottom + 4;
+    } else {
+      top = Math.max(8, r.top - 4 - menuH);
+    }
+    // 水平：menu 右边和 trigger 右边对齐，受视口边界限制
+    let left = Math.max(8, Math.min(window.innerWidth - menuW - 8, r.right - menuW));
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
+    menu.style.right = 'auto';
+    menu.style.bottom = 'auto';
   }
 
   let globalMenuCloseInstalled = false;
   function installGlobalMenuClose() {
     if (globalMenuCloseInstalled) return;
     globalMenuCloseInstalled = true;
+    const closeAll = () => document.querySelectorAll('.__aem-forward-menu.__aem-visible').forEach((m) => m.classList.remove('__aem-visible'));
     document.addEventListener('click', (ev) => {
-      document.querySelectorAll('.__aem-forward-row.__aem-open').forEach((r) => {
-        if (!r.contains(ev.target)) r.classList.remove('__aem-open');
-      });
+      if (ev.target && ev.target.closest && ev.target.closest('.__aem-forward-menu, .__aem-forward-btn')) return;
+      closeAll();
     }, true);
     document.addEventListener('keydown', (ev) => {
-      if (ev.key !== 'Escape') return;
-      document.querySelectorAll('.__aem-forward-row.__aem-open').forEach((r) => r.classList.remove('__aem-open'));
+      if (ev.key === 'Escape') closeAll();
     }, true);
+    // 滚动 / 缩放后位置失效，干脆关菜单
+    document.addEventListener('scroll', closeAll, true);
+    window.addEventListener('resize', closeAll);
   }
 
   function findVisibleInput() {
@@ -585,7 +640,33 @@
     return false;
   }
 
-  function extractBubbleText(bubble) {
+  function getTargetById(id) {
+    return FORWARD_TARGETS.find((t) => t.id === id) || null;
+  }
+
+  function extractBubbleText(bubble, excludeSelector) {
+    if (excludeSelector) {
+      // 显式剔除：手工游走文本节点，跳过 excludeSelector 匹配的子树与隐藏元素
+      // 必要场景：智谱的 .copy-btn（hover 才出现的"复制入框"）在某些时序下会被
+      // innerText 抓到，从而把按钮文字而非用户问题转发出去
+      const excluded = new Set(bubble.querySelectorAll(excludeSelector));
+      function walk(node) {
+        if (node.nodeType === 3) return node.nodeValue || '';
+        if (node.nodeType !== 1) return '';
+        if (excluded.has(node)) return '';
+        if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') return '';
+        const cs = getComputedStyle(node);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return '';
+        let out = '';
+        for (const child of node.childNodes) out += walk(child);
+        return out;
+      }
+      return walk(bubble).replace(/\s+/g, ' ').trim();
+    }
+    return extractBubbleTextDefault(bubble);
+  }
+
+  function extractBubbleTextDefault(bubble) {
     return (bubble.innerText || '').replace(/ /g, ' ').trim();
   }
 
@@ -602,6 +683,65 @@
   function cleanupForwardRows() {
     document.querySelectorAll('[data-aem-forward-row]').forEach((el) => el.remove());
     document.querySelectorAll('[data-aem-bubble]').forEach((el) => { delete el.dataset.aemBubble; });
+    // portal 到 body 的菜单也要清掉，避免路由切换后留下孤儿元素
+    document.querySelectorAll('.__aem-forward-menu').forEach((m) => m.remove());
+  }
+
+  // 尝试给一个已识别的气泡挂转发按钮；返回 'attached' / 'skip'
+  function tryAttachToBubble(bubble, currentId, target, scanState) {
+    if (!bubble || attachedBubbles.has(bubble)) return 'skip';
+    if (bubble.dataset && bubble.dataset.aemBubble === '1') return 'skip';
+
+    const directHost = bubble.parentElement;
+    if (!directHost) return 'skip';
+
+    // 单元素横向 flex wrapper（如豆包 <div class="flex justify-end">）升级到祖父
+    let insertHost = directHost;
+    let insertAfter = bubble;
+    if (isHorizontalFlex(directHost) && directHost.parentElement && directHost.children.length <= 2) {
+      insertHost = directHost.parentElement;
+      insertAfter = directHost;
+    }
+    if (isHorizontalFlex(insertHost)) {
+      attachedBubbles.add(bubble);
+      bubble.dataset.aemBubble = '1';
+      return 'skip';
+    }
+
+    // 真实插入点 dedupe
+    const existingNext = insertAfter.nextElementSibling;
+    if (existingNext && existingNext.dataset && existingNext.dataset.aemForwardRow === '1') {
+      attachedBubbles.add(bubble);
+      bubble.dataset.aemBubble = '1';
+      return 'skip';
+    }
+
+    const text = extractBubbleText(bubble, target && target.excludeContent);
+    if (!text || text.length < 2 || text.length > 8000) return 'skip';
+
+    const row = buildForwardRow(text, currentId);
+    if (!row) return 'skip';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = '__aem-forward-row-host';
+    wrapper.dataset.aemForwardRow = '1';
+    wrapper.appendChild(row);
+    delete row.dataset.aemForwardRow;
+
+    if (insertAfter.nextSibling) insertHost.insertBefore(wrapper, insertAfter.nextSibling);
+    else insertHost.appendChild(wrapper);
+
+    bubble.dataset.aemBubble = '1';
+    attachedBubbles.add(bubble);
+
+    const norm = text.replace(/\s+/g, ' ').trim();
+    if (!seenTexts.has(norm)) {
+      seenTexts.add(norm);
+      panelQueue.push(text);
+      if (panelQueue.length > 50) panelQueue.shift();
+    }
+    scanState.attached++;
+    return 'attached';
   }
 
   function scanAndAttach(currentId) {
@@ -616,93 +756,38 @@
 
     if (totalAttached >= MAX_TOTAL) return;
 
-    const all = document.body.querySelectorAll('div,section,article,p,li');
-    let attached = 0;
-    for (const el of all) {
-      if (attached >= MAX_PER_SCAN) break;
-      if (totalAttached + attached >= MAX_TOTAL) break;
-      if (attachedBubbles.has(el)) continue;
-      if (isExcluded(el)) continue;
-      if (!hasBubbleStyle(el)) continue;
+    const target = getTargetById(currentId);
+    const scanState = { attached: 0 };
+    const capReached = () => scanState.attached >= MAX_PER_SCAN || totalAttached + scanState.attached >= MAX_TOTAL;
 
-      const r = el.getBoundingClientRect();
-      if (r.width < 80 || r.height < 32) continue;
-      if (r.width > window.innerWidth * 0.95) continue;
-      if (el.children.length > 80) continue;
-
-      if (!isRightAlignedRelative(el)) continue;
-
-      const bubble = findOutermostStyledBubble(el);
-      if (attachedBubbles.has(bubble)) continue;
-      if (bubble.dataset && bubble.dataset.aemBubble === '1') continue;
-
-      // 已是 forward-row 紧跟在气泡后面 → 跳过
-      const nextEl = bubble.nextElementSibling;
-      if (nextEl && nextEl.dataset && nextEl.dataset.aemForwardRow === '1') {
-        attachedBubbles.add(bubble);
-        bubble.dataset.aemBubble = '1';
-        continue;
+    if (target && target.userBubble) {
+      // 站点专属：用确定的选择器，跳过启发式
+      const bubbles = document.querySelectorAll(target.userBubble);
+      for (const b of bubbles) {
+        if (capReached()) break;
+        tryAttachToBubble(b, currentId, target, scanState);
       }
-
-      const directHost = bubble.parentElement;
-      if (!directHost) continue;
-
-      // 选择插入位置：
-      //   directHost 若是横向 flex（典型为单元素 wrapper，如豆包的
-      //   `<div class="flex justify-end">`），跳到祖父（垂直消息列表），
-      //   把 row 作为 host 的下一个兄弟插入；这样既不会沿水平堆积，
-      //   也能与原气泡保持在同一消息行下方。
-      let insertHost = directHost;
-      let insertAfter = bubble;
-      if (isHorizontalFlex(directHost) && directHost.parentElement && directHost.children.length <= 2) {
-        insertHost = directHost.parentElement;
-        insertAfter = directHost;
-      }
-      if (isHorizontalFlex(insertHost)) {
-        // 升级后仍是横向 flex，认为不安全，跳过
-        attachedBubbles.add(bubble);
-        bubble.dataset.aemBubble = '1';
-        continue;
-      }
-
-      // 在真正的插入点位置做 dedupe（防止多次扫描造成重复挂载）
-      const existingNext = insertAfter.nextElementSibling;
-      if (existingNext && existingNext.dataset && existingNext.dataset.aemForwardRow === '1') {
-        attachedBubbles.add(bubble);
-        bubble.dataset.aemBubble = '1';
-        continue;
-      }
-
-      const text = extractBubbleText(bubble);
-      if (!text || text.length < 2 || text.length > 8000) continue;
-
-      const row = buildForwardRow(text, currentId);
-      if (!row) continue;
-
-      // 用一个 wrapper 包裹，确保在垂直 flex / 块级容器里都能右对齐
-      const wrapper = document.createElement('div');
-      wrapper.className = '__aem-forward-row-host';
-      wrapper.dataset.aemForwardRow = '1';
-      wrapper.appendChild(row);
-      delete row.dataset.aemForwardRow; // 标记移到 wrapper 上，避免重复
-
-      if (insertAfter.nextSibling) insertHost.insertBefore(wrapper, insertAfter.nextSibling);
-      else insertHost.appendChild(wrapper);
-
-      bubble.dataset.aemBubble = '1';
-      attachedBubbles.add(bubble);
-      attached++;
-
-      const norm = text.replace(/\s+/g, ' ').trim();
-      if (!seenTexts.has(norm)) {
-        seenTexts.add(norm);
-        panelQueue.push(text);
-        if (panelQueue.length > 50) panelQueue.shift();
+    } else {
+      // 通用启发式：bg + radius + 相对父容器明显右对齐
+      const all = document.body.querySelectorAll('div,section,article,p,li');
+      for (const el of all) {
+        if (capReached()) break;
+        if (attachedBubbles.has(el)) continue;
+        if (isExcluded(el)) continue;
+        if (!hasBubbleStyle(el)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 80 || r.height < 32) continue;
+        if (r.width > window.innerWidth * 0.95) continue;
+        if (el.children.length > 80) continue;
+        if (!isRightAlignedRelative(el)) continue;
+        const bubble = findOutermostStyledBubble(el);
+        tryAttachToBubble(bubble, currentId, target, scanState);
       }
     }
-    if (attached > 0) {
-      totalAttached += attached;
-      log(`attached forward rows: +${attached} (total=${totalAttached}, panel=${panelQueue.length})`);
+
+    if (scanState.attached > 0) {
+      totalAttached += scanState.attached;
+      log(`attached forward rows: +${scanState.attached} (total=${totalAttached}, panel=${panelQueue.length})`);
       if (totalAttached >= MAX_TOTAL) warn(`reached MAX_TOTAL (${MAX_TOTAL})，停止继续扫描以防止误识别失控`);
       renderPanel();
     }
