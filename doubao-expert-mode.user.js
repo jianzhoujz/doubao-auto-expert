@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.4
+// @version      3.0.5
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -407,29 +407,11 @@
       font-size:13px !important;line-height:1.4 !important;font-family:inherit !important;width:100% !important}
     .__aem-forward-menu-item:hover{background:#f1f5f9 !important}
 
-    .__aem-fwd-panel{position:fixed !important;right:16px !important;bottom:16px !important;z-index:2147483640 !important;
-      background:#fff !important;color:#1f2937 !important;border:1px solid #d4d4d8 !important;border-radius:10px !important;
-      box-shadow:0 6px 18px rgba(0,0,0,.12) !important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif !important;
-      font-size:13px !important;width:300px !important;overflow:hidden !important}
-    .__aem-fwd-head{display:flex !important;align-items:center !important;justify-content:space-between !important;padding:8px 12px !important;cursor:pointer !important;font-weight:600 !important;background:#f4f4f5 !important;user-select:none !important}
-    .__aem-fwd-head-mini{font-weight:400 !important;font-size:11px !important;color:#71717a !important}
-    .__aem-fwd-body{padding:6px 12px 10px !important;max-height:260px !important;overflow:auto !important}
-    .__aem-fwd-item{padding:8px 0 !important;border-top:1px solid #f1f5f9 !important}
-    .__aem-fwd-item:first-child{border-top:none !important}
-    .__aem-fwd-q{color:#52525b !important;font-size:12px !important;margin-bottom:6px !important;
-      display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;word-break:break-word !important}
-    .__aem-fwd-empty{color:#a1a1aa !important;font-size:12px !important;padding:8px 0 !important}
-    .__aem-fwd-panel.__aem-collapsed .__aem-fwd-body{display:none !important}
     @media (prefers-color-scheme: dark){
       .__aem-forward-btn{background:#1e3a8a !important;color:#dbeafe !important;border-color:#3b82f6 !important}
       .__aem-forward-btn:hover{background:#2563eb !important;color:#fff !important}
       .__aem-forward-menu{background:#1f2937 !important;color:#f4f4f5 !important;border-color:#374151 !important}
       .__aem-forward-menu-item:hover{background:#374151 !important}
-      .__aem-fwd-panel{background:#1f2937 !important;color:#f4f4f5 !important;border-color:#374151 !important}
-      .__aem-fwd-head{background:#111827 !important}
-      .__aem-fwd-head-mini{color:#a1a1aa !important}
-      .__aem-fwd-item{border-top-color:#374151 !important}
-      .__aem-fwd-q{color:#d4d4d8 !important}
     }
   `;
 
@@ -631,7 +613,7 @@
     if (!el) return true;
     if (el.tagName === 'BUTTON' || el.closest('button')) return true;
     if (el.getAttribute && el.getAttribute('role') === 'button') return true;
-    if (el.closest('.__aem-fwd-panel,.__aem-toast-container')) return true;
+    if (el.closest('.__aem-toast-container')) return true;
     if (el.closest('.__aem-forward-row,.__aem-forward-menu')) return true; // 自家注入的 DOM
     if (el.closest('[data-aem-forward-row]')) return true;
     if (el.closest('textarea,[contenteditable="true"]')) return true;
@@ -670,11 +652,7 @@
     return (bubble.innerText || '').replace(/ /g, ' ').trim();
   }
 
-  // 浮动面板状态
-  let panelEl = null;
-  let panelCurrentId = '';
-  const panelQueue = []; // 按出现顺序保留扫到的用户问题
-  const seenTexts = new Set();
+  // 扫描状态
   let lastForwardUrl = '';
   let totalAttached = 0;
   const MAX_PER_SCAN = 5;
@@ -733,13 +711,6 @@
 
     bubble.dataset.aemBubble = '1';
     attachedBubbles.add(bubble);
-
-    const norm = text.replace(/\s+/g, ' ').trim();
-    if (!seenTexts.has(norm)) {
-      seenTexts.add(norm);
-      panelQueue.push(text);
-      if (panelQueue.length > 50) panelQueue.shift();
-    }
     scanState.attached++;
     return 'attached';
   }
@@ -747,11 +718,8 @@
   function scanAndAttach(currentId) {
     if (location.href !== lastForwardUrl) {
       lastForwardUrl = location.href;
-      panelQueue.length = 0;
-      seenTexts.clear();
       totalAttached = 0;
       cleanupForwardRows();
-      renderPanel();
     }
 
     if (totalAttached >= MAX_TOTAL) return;
@@ -787,9 +755,8 @@
 
     if (scanState.attached > 0) {
       totalAttached += scanState.attached;
-      log(`attached forward rows: +${scanState.attached} (total=${totalAttached}, panel=${panelQueue.length})`);
+      log(`attached forward rows: +${scanState.attached} (total=${totalAttached})`);
       if (totalAttached >= MAX_TOTAL) warn(`reached MAX_TOTAL (${MAX_TOTAL})，停止继续扫描以防止误识别失控`);
-      renderPanel();
     }
   }
 
@@ -811,59 +778,6 @@
     setTimeout(() => scanAndAttach(currentId), 200);
     setTimeout(() => scanAndAttach(currentId), 1000);
     setTimeout(() => scanAndAttach(currentId), 2500);
-  }
-
-  // ---- 右下角浮动面板：列出当前会话已识别出的所有用户问题 ----
-  function ensurePanel(currentId) {
-    panelCurrentId = currentId;
-    if (panelEl && document.body && document.body.contains(panelEl)) return panelEl;
-    panelEl = document.createElement('div');
-    panelEl.className = '__aem-fwd-panel __aem-collapsed';
-    panelEl.innerHTML = `
-      <div class="__aem-fwd-head">
-        <span>↗ 跨 AI 转发<span class="__aem-fwd-head-mini" data-mini> （0）</span></span>
-        <span data-toggle>▾</span>
-      </div>
-      <div class="__aem-fwd-body" data-body></div>
-    `;
-    panelEl.querySelector('.__aem-fwd-head').addEventListener('click', () => {
-      panelEl.classList.toggle('__aem-collapsed');
-      panelEl.querySelector('[data-toggle]').textContent =
-        panelEl.classList.contains('__aem-collapsed') ? '▾' : '▴';
-    });
-    (document.body || document.documentElement).appendChild(panelEl);
-    renderPanel();
-    return panelEl;
-  }
-
-  function renderPanel() {
-    if (!panelEl) return;
-    const body = panelEl.querySelector('[data-body]');
-    const mini = panelEl.querySelector('[data-mini]');
-    mini.textContent = ` （${panelQueue.length}）`;
-    body.textContent = '';
-    if (panelQueue.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = '__aem-fwd-empty';
-      empty.textContent = '该会话尚未识别到用户消息（或刚切换会话还在扫描）';
-      body.appendChild(empty);
-      return;
-    }
-    for (let i = panelQueue.length - 1; i >= 0; i--) {
-      const q = panelQueue[i];
-      const item = document.createElement('div');
-      item.className = '__aem-fwd-item';
-      const qDiv = document.createElement('div');
-      qDiv.className = '__aem-fwd-q';
-      qDiv.textContent = q;
-      item.appendChild(qDiv);
-      const row = buildForwardRow(q, panelCurrentId);
-      if (row) {
-        row.style.justifyContent = 'flex-start';
-        item.appendChild(row);
-      }
-      body.appendChild(item);
-    }
   }
 
   // ---- 目标侧：读取 hash 并回填输入框 ----
@@ -947,7 +861,6 @@
     log('forward site:', fwdSite.id);
     ensureForwardCss();
     installGlobalMenuClose();
-    ensurePanel(fwdSite.id);
     watchUserBubbles(fwdSite.id);
     maybeFillForwardedQuestion(fwdSite.label);
   }
