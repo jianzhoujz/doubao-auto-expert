@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.5
+// @version      3.0.6
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -440,7 +440,7 @@
     const trigger = document.createElement('button');
     trigger.type = 'button';
     trigger.className = '__aem-forward-btn';
-    trigger.textContent = `↗ 转发到其他 AI`;
+    trigger.textContent = `↗ 问问别的AI`;
     trigger.title = '在新标签页打开目标 AI 并自动填入此问题';
 
     // 菜单 portal 到 body 用 position:fixed 渲染，避免被某些站点（如 DeepSeek）
@@ -566,7 +566,6 @@
   // ---- 结构性识别用户气泡 ----
   // 启发式：元素同时有背景色 + 圆角（典型气泡视觉），且子树相对父容器明显右对齐
   // 不依赖任何站点 class，跨豆包 / DeepSeek 通用
-  const attachedBubbles = new WeakSet();
 
   function hasBubbleStyle(el) {
     if (!el || !el.tagName) return false;
@@ -618,7 +617,10 @@
     if (el.closest('[data-aem-forward-row]')) return true;
     if (el.closest('textarea,[contenteditable="true"]')) return true;
     if (el.closest('header,nav,aside,footer')) return true;
-    if (el.closest('[data-aem-bubble]')) return true; // 已挂的气泡内部都跳过
+    // 已挂的气泡"内部"（descendants）跳过，但气泡本身不跳过——
+    // 站点 re-render 时 React 会卸掉我们的 wrapper 但保留 bubble DOM 元素，
+    // 这时必须允许重新评估这个 bubble，否则按钮就消失了不会再回来
+    if (el.parentElement && el.parentElement.closest('[data-aem-bubble]')) return true;
     return false;
   }
 
@@ -654,9 +656,7 @@
 
   // 扫描状态
   let lastForwardUrl = '';
-  let totalAttached = 0;
-  const MAX_PER_SCAN = 5;
-  const MAX_TOTAL = 60;
+  const MAX_PER_SCAN = 8; // 单次扫描挂载上限，纯粹用于限制每帧工作量
 
   function cleanupForwardRows() {
     document.querySelectorAll('[data-aem-forward-row]').forEach((el) => el.remove());
@@ -666,9 +666,12 @@
   }
 
   // 尝试给一个已识别的气泡挂转发按钮；返回 'attached' / 'skip'
+  // 关键：dedupe 仅靠"我们的 wrapper 是否仍在插入点位置"，不靠 attachedBubbles /
+  // data-aem-bubble 等内存标记。原因是站点（ChatGPT / Qwen / 豆包）开始流式输出
+  // 时会 re-render 聊天容器：React 保留 bubble DOM 但卸掉我们这个"非受控"子节点
+  // wrapper，标记此时仍残留，会让 dedupe 误判"已挂过"，导致按钮永久消失。
   function tryAttachToBubble(bubble, currentId, target, scanState) {
-    if (!bubble || attachedBubbles.has(bubble)) return 'skip';
-    if (bubble.dataset && bubble.dataset.aemBubble === '1') return 'skip';
+    if (!bubble) return 'skip';
 
     const directHost = bubble.parentElement;
     if (!directHost) return 'skip';
@@ -680,16 +683,12 @@
       insertHost = directHost.parentElement;
       insertAfter = directHost;
     }
-    if (isHorizontalFlex(insertHost)) {
-      attachedBubbles.add(bubble);
-      bubble.dataset.aemBubble = '1';
-      return 'skip';
-    }
+    if (isHorizontalFlex(insertHost)) return 'skip';
 
-    // 真实插入点 dedupe
+    // 唯一 dedupe：插入点的 nextElementSibling 是不是我们的 wrapper
     const existingNext = insertAfter.nextElementSibling;
     if (existingNext && existingNext.dataset && existingNext.dataset.aemForwardRow === '1') {
-      attachedBubbles.add(bubble);
+      // 已挂着，顺手在 bubble 上打个标记给 isExcluded 用于剪枝子树扫描
       bubble.dataset.aemBubble = '1';
       return 'skip';
     }
@@ -709,8 +708,7 @@
     if (insertAfter.nextSibling) insertHost.insertBefore(wrapper, insertAfter.nextSibling);
     else insertHost.appendChild(wrapper);
 
-    bubble.dataset.aemBubble = '1';
-    attachedBubbles.add(bubble);
+    bubble.dataset.aemBubble = '1'; // 仅用于 isExcluded 剪枝，不再用于 dedupe
     scanState.attached++;
     return 'attached';
   }
@@ -718,15 +716,12 @@
   function scanAndAttach(currentId) {
     if (location.href !== lastForwardUrl) {
       lastForwardUrl = location.href;
-      totalAttached = 0;
       cleanupForwardRows();
     }
 
-    if (totalAttached >= MAX_TOTAL) return;
-
     const target = getTargetById(currentId);
     const scanState = { attached: 0 };
-    const capReached = () => scanState.attached >= MAX_PER_SCAN || totalAttached + scanState.attached >= MAX_TOTAL;
+    const capReached = () => scanState.attached >= MAX_PER_SCAN;
 
     if (target && target.userBubble) {
       // 站点专属：用确定的选择器，跳过启发式
@@ -740,7 +735,6 @@
       const all = document.body.querySelectorAll('div,section,article,p,li');
       for (const el of all) {
         if (capReached()) break;
-        if (attachedBubbles.has(el)) continue;
         if (isExcluded(el)) continue;
         if (!hasBubbleStyle(el)) continue;
         const r = el.getBoundingClientRect();
@@ -754,9 +748,7 @@
     }
 
     if (scanState.attached > 0) {
-      totalAttached += scanState.attached;
-      log(`attached forward rows: +${scanState.attached} (total=${totalAttached})`);
-      if (totalAttached >= MAX_TOTAL) warn(`reached MAX_TOTAL (${MAX_TOTAL})，停止继续扫描以防止误识别失控`);
+      log(`attached forward rows: +${scanState.attached}`);
     }
   }
 
@@ -785,28 +777,35 @@
 
   function setInputValueViaSetter(el, text) {
     try {
-      if (el.tagName === 'TEXTAREA') {
-        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-        setter.call(el, text);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+      if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+        // 用原生 setter 绕过 React 受控限制；同时派发多种事件，让 Qwen / Kimi
+        // 这类靠 keyup / change / beforeinput 触发的"提交按钮启用"逻辑也能感知到
+        const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
         el.focus();
-        return true;
-      }
-      if (el.tagName === 'INPUT') {
-        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         setter.call(el, text);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.focus();
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
         return true;
       }
       if (el.getAttribute && el.getAttribute('contenteditable') === 'true') {
         el.focus();
+        // 清空 + 选区到末尾再插入
         const sel = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(el);
         sel.removeAllRanges();
         sel.addRange(range);
-        document.execCommand('insertText', false, text);
+        // execCommand 仍是 contenteditable 最可靠的"产生真实 InputEvent"路径
+        const ok = document.execCommand('insertText', false, text);
+        if (!ok) {
+          // 某些站点禁用了 execCommand：fallback 到 textContent + 手工 InputEvent
+          el.textContent = text;
+          el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+        }
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
         return true;
       }
     } catch (e) {
