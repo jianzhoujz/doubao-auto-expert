@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.9
+// @version      3.0.10
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -376,7 +376,10 @@
     { id: 'deepseek', label: 'DeepSeek',  url: 'https://chat.deepseek.com/',
       test: (u) => /^https:\/\/chat\.deepseek\.com\//.test(u) },
     { id: 'qianwen',  label: '千问',      url: 'https://www.qianwen.com/',
-      test: (u) => /^https:\/\/(www\.)?qianwen\.com\//.test(u) },
+      test: (u) => /^https:\/\/(www\.)?qianwen\.com\//.test(u),
+      // 千问用户气泡是 .message-card-wrap.question 下的 .question-text-card
+      // （shape rgb(235,245,255) + radius 16），同站 .answer-common-card 是 AI 回复
+      userBubble: '.message-card-wrap.question .question-text-card' },
     { id: 'qwen',     label: 'Qwen',      url: 'https://chat.qwen.ai/',
       test: (u) => /^https:\/\/chat\.qwen\.ai\//.test(u) },
     { id: 'doubao',   label: '豆包',      url: 'https://www.doubao.com/chat/',
