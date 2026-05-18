@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.6
-// @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 通义千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 通义千问 上自动切换深度思考 / 专家模式
+// @version      3.0.7
+// @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
 // @supportURL   https://github.com/jianzhoujz/doubao-auto-expert/issues
@@ -204,11 +204,11 @@
     },
   };
 
-  // ---------- 通义千问：「思考」 toggle 按钮 ----------
+  // ---------- 千问：「思考」 toggle 按钮 ----------
   // 实测：<button aria-pressed="false|true">思考</button>，aria-pressed 即为开关状态
   const qianwenHandler = {
     id: 'qianwen',
-    label: '通义千问',
+    label: '千问',
     targetLabel: '思考',
     rerunOnRouteChange: false, // toggle 跨会话通常保持，避免误关
     match: () => /^https:\/\/(www\.)?qianwen\.com\//.test(location.href),
@@ -372,7 +372,7 @@
       test: (u) => /^https:\/\/(www\.)?kimi\.com\//.test(u) },
     { id: 'deepseek', label: 'DeepSeek',  url: 'https://chat.deepseek.com/',
       test: (u) => /^https:\/\/chat\.deepseek\.com\//.test(u) },
-    { id: 'qianwen',  label: '通义千问',  url: 'https://www.qianwen.com/',
+    { id: 'qianwen',  label: '千问',      url: 'https://www.qianwen.com/',
       test: (u) => /^https:\/\/(www\.)?qianwen\.com\//.test(u) },
     { id: 'qwen',     label: 'Qwen',      url: 'https://chat.qwen.ai/',
       test: (u) => /^https:\/\/chat\.qwen\.ai\//.test(u) },

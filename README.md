@@ -14,7 +14,7 @@
 
 这个脚本一次解决两个 AI 网页版的高频痛点：
 
-1. **自动切换深度思考 / 专家模式** —— 豆包 / DeepSeek / 通义千问默认都是「快速 / 普通模式」，响应快但答得浅，每次新建对话、刷新、切会话都得再手动点一遍。脚本一次性把它自动化。
+1. **自动切换深度思考 / 专家模式** —— 豆包 / DeepSeek / 千问默认都是「快速 / 普通模式」，响应快但答得浅，每次新建对话、刷新、切会话都得再手动点一遍。脚本一次性把它自动化。
 2. **一键跨 AI 转发问题** —— 觉得 A 答得不好想看看 B、C 怎么答时，以前要复制问题 → 新开标签 → 粘贴 → 发送。装上脚本后，每条用户消息下方都会出现一个「↗ 转发到其他 AI」下拉按钮，点一下即在新标签打开目标 AI 并自动回填问题，省去复制粘贴的全部步骤。
 
 **覆盖站点：**
@@ -27,7 +27,7 @@
 | [智谱](https://chatglm.cn/main/alltoolsdetail?lang=zh) | — | ✅ |
 | [Kimi](https://www.kimi.com/) | — | ✅ |
 | [DeepSeek](https://chat.deepseek.com/) | ✅ 快速模式 → 专家模式 | ✅ |
-| [通义千问](https://www.qianwen.com/) | ✅ 默认 → 深度思考 | ✅ |
+| [千问](https://www.qianwen.com/) | ✅ 默认 → 深度思考 | ✅ |
 | [Qwen](https://chat.qwen.ai/) | — | ✅ |
 | [豆包](https://www.doubao.com/chat/) | ✅ 快速 / 思考 → 专家 | ✅ |
 | [元宝](https://yuanbao.tencent.com/chat/) | — | ✅ |
@@ -43,15 +43,15 @@
 
 ## 核心特性
 
-🎯 **多站点统一调度** —— 单脚本覆盖豆包、DeepSeek、通义千问，按 URL 自动路由到对应处理器，新增站点只需扩展一个 handler。
+🎯 **多站点统一调度** —— 单脚本覆盖豆包、DeepSeek、千问，按 URL 自动路由到对应处理器，新增站点只需扩展一个 handler。
 
 🔔 **结果可感知** —— 不再是黑盒。每次执行都会通过 Toast 告诉你：切了 / 没切 / 没切的原因，遇到失败也能第一时间发现。
 
-🔄 **SPA 深度适配** —— 这些站点都是单页应用，新建/切换对话不会刷新页面。脚本通过监听 `pushState`、`replaceState`、`popstate` 与 DOM 变化，在任何导航场景下都能正确触发。豆包 / DeepSeek 这类「每次会话都重置」的站点会重新切换；通义千问这类「toggle 跨会话保持」的站点只在首次加载执行，避免误把已开启的深度思考点关。
+🔄 **SPA 深度适配** —— 这些站点都是单页应用，新建/切换对话不会刷新页面。脚本通过监听 `pushState`、`replaceState`、`popstate` 与 DOM 变化，在任何导航场景下都能正确触发。豆包 / DeepSeek 这类「每次会话都重置」的站点会重新切换；千问这类「toggle 跨会话保持」的站点只在首次加载执行，避免误把已开启的深度思考点关。
 
 🖱️ **原生级事件模拟** —— 豆包等基于 Radix UI 的 UI 框架对普通 `.click()` 不响应。脚本完整模拟 `pointerdown → mousedown → pointerup → mouseup → click` 事件链，与真实用户操作一致。
 
-🧠 **稳健的状态识别** —— 不同站点用不同信号判定当前模式：豆包看 trigger 按钮文本、DeepSeek 比较 pill 文字颜色（选中色偏蓝）、通义千问读 `aria-pressed`。每个 handler 都经过浏览器实测，避免误点击。
+🧠 **稳健的状态识别** —— 不同站点用不同信号判定当前模式：豆包看 trigger 按钮文本、DeepSeek 比较 pill 文字颜色（选中色偏蓝）、千问读 `aria-pressed`。每个 handler 都经过浏览器实测，避免误点击。
 
 ⏱️ **智能重试** —— 页面加载速度受网络影响，脚本采用最多 30 次、每秒一次的轮询策略，确保慢网下也能可靠完成切换；超时后会给出明确的失败 Toast。
 
@@ -105,12 +105,12 @@
 - [智谱](https://chatglm.cn/main/alltoolsdetail?lang=zh)
 - [Kimi](https://www.kimi.com/)
 - [DeepSeek](https://chat.deepseek.com/)
-- [通义千问](https://www.qianwen.com/)
+- [千问](https://www.qianwen.com/)
 - [Qwen](https://chat.qwen.ai/)
 - [豆包](https://www.doubao.com/chat/)
 - [元宝](https://yuanbao.tencent.com/chat/)
 
-豆包 / DeepSeek / 通义千问 上脚本会自动切到专家 / 深度思考模式（右上角 Toast 提示）；全部 10 个站点都会在每条用户消息气泡下方挂上「↗ 转发到其他 AI」下拉按钮，点击即可一键跳转到其他 AI 并自动回填问题。新建对话 / 切换历史对话 / 滚动加载老消息都会重新扫描。
+豆包 / DeepSeek / 千问 上脚本会自动切到专家 / 深度思考模式（右上角 Toast 提示）；全部 10 个站点都会在每条用户消息气泡下方挂上「↗ 转发到其他 AI」下拉按钮，点击即可一键跳转到其他 AI 并自动回填问题。新建对话 / 切换历史对话 / 滚动加载老消息都会重新扫描。
 
 ## 工作原理
 
@@ -163,7 +163,7 @@
 
 由于脚本依赖页面 DOM 结构，前端发版可能导致选择器或状态判断失效。失效时 Toast 会显示具体原因（如「未找到选项」「无法识别开关状态」），方便定位。欢迎 [提交 Issue](https://github.com/jianzhoujz/doubao-auto-expert/issues)，附上 Toast 提示文字与控制台 `[AutoExpert]` 日志即可。
 
-**Q: 通义千问的「深度思考」是否会被误关？**
+**Q: 千问的「深度思考」是否会被误关？**
 
 不会。千问的 handler 配置成只在「首次加载页面」执行，且通过 `aria-pressed === 'true'` 精确判定当前是否已开启；已开启时会显示蓝色 Toast「无需切换」并跳过点击。SPA 路由变化（切换会话）不会重复触发。
 
