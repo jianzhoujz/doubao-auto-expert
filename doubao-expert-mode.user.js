@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.10
+// @version      3.0.11
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -137,15 +137,21 @@
 
       const inner = trigger.querySelector('button') || trigger;
       simulateClick(inner);
-      await sleep(500);
 
+      // 菜单内容是异步渲染的,固定 sleep 在慢网/慢机器上会错过;
+      // 改成轮询查找「专家」menuitem,最多等 5s
       let target = null;
-      for (const item of document.querySelectorAll('[role="menuitem"]')) {
-        if ((item.textContent || '').includes('专家')) { target = item; break; }
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        for (const item of document.querySelectorAll('[role="menuitem"]')) {
+          if ((item.textContent || '').includes('专家')) { target = item; break; }
+        }
+        if (target) break;
+        await sleep(250);
       }
       if (!target) {
         pressEscape();
-        return { status: 'error', reason: '已展开下拉菜单，但未找到「专家」选项' };
+        return { status: 'error', reason: '已展开下拉菜单,但 5s 内未出现「专家」选项' };
       }
       simulateClick(target);
       return { status: 'success', from: current, to: '专家' };
