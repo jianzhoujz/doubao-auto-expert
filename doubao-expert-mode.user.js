@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.11
+// @version      3.0.12
 // @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 上自动切换深度思考 / 专家模式
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -147,7 +147,7 @@
           if ((item.textContent || '').includes('专家')) { target = item; break; }
         }
         if (target) break;
-        await sleep(250);
+        await sleep(500);
       }
       if (!target) {
         pressEscape();
@@ -254,7 +254,7 @@
   // ============================================================
   const MAX_RETRIES = 30;
   const RETRY_INTERVAL = 1000;
-  const ROUTE_DELAY = 1500;
+  const ROUTE_DELAY = 2000;
 
   let switching = false;
   let attemptCount = 0;
