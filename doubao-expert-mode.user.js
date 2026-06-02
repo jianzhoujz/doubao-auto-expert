@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.13
-// @description  在 ChatGPT / Claude / Gemini / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
+// @version      3.0.14
+// @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
 // @supportURL   https://github.com/jianzhoujz/doubao-auto-expert/issues
@@ -11,6 +11,7 @@
 // @match        https://chatgpt.com/*
 // @match        https://claude.ai/*
 // @match        https://gemini.google.com/*
+// @match        https://github.com/copilot*
 // @match        https://chatglm.cn/*
 // @match        https://chat.z.ai/*
 // @match        https://www.kimi.com/*
@@ -526,6 +527,10 @@
       test: (u) => /^https:\/\/claude\.ai\//.test(u) },
     { id: 'gemini',   label: 'Gemini',    url: 'https://gemini.google.com/app',
       test: (u) => /^https:\/\/gemini\.google\.com\//.test(u) },
+    { id: 'copilot',  label: 'GitHub Copilot', url: 'https://github.com/copilot',
+      test: (u) => /^https:\/\/github\.com\/copilot(?:[/?#]|$)/.test(u),
+      // GitHub 会在 Copilot 页面加载早期清掉 hash，改用 query 参数传递待填问题
+      useQueryParam: true },
     { id: 'chatglm',  label: '智谱',      url: 'https://chatglm.cn/main/alltoolsdetail?lang=zh',
       test: (u) => /^https:\/\/chatglm\.cn\//.test(u),
       // 智谱用户消息左对齐、有用户名头部，无 bg/radius，启发式抓不到；
@@ -603,7 +608,10 @@
   }
 
   function openForwardTarget(target, question) {
-    const url = target.url + '#__aem_q=' + encodeURIComponent(question);
+    const encoded = encodeURIComponent(question);
+    const url = target.useQueryParam
+      ? target.url + (target.url.includes('?') ? '&' : '?') + '__aem_q=' + encoded
+      : target.url + '#__aem_q=' + encoded;
     log('forward → open', target.id, url.slice(0, 80) + '...');
     window.open(url, '_blank', 'noopener');
   }
@@ -726,7 +734,7 @@
       ...document.querySelectorAll('textarea'),
       ...document.querySelectorAll('[contenteditable="true"]'),
     ]) {
-      if (!c.offsetParent) continue;
+      if (!isVisibleElement(c)) continue;
       const r = c.getBoundingClientRect();
       if (r.width < 80 || r.height < 16) continue;
       if (r.bottom < 0 || r.top > window.innerHeight) continue;
@@ -951,8 +959,35 @@
     setTimeout(() => scanAndAttach(currentId), 2500);
   }
 
-  // ---- 目标侧：读取 hash 并回填输入框 ----
+  // ---- 目标侧：读取 URL 参数并回填输入框 ----
   const FORWARD_HASH_RE = /(?:^#|&)__aem_q=([^&]*)/;
+  const FORWARD_PARAM = '__aem_q';
+
+  function readForwardedQuestionFromUrl() {
+    const hashMatch = location.hash.match(FORWARD_HASH_RE);
+    if (hashMatch) {
+      let q;
+      try { q = decodeURIComponent(hashMatch[1]); } catch { return null; }
+      const newHash = location.hash
+        .replace(FORWARD_HASH_RE, '')
+        .replace(/^#&/, '#')
+        .replace(/^#$/, '');
+      return {
+        q,
+        cleanUrl: location.pathname + location.search + newHash,
+      };
+    }
+
+    const params = new URLSearchParams(location.search);
+    if (!params.has(FORWARD_PARAM)) return null;
+    const q = params.get(FORWARD_PARAM) || '';
+    params.delete(FORWARD_PARAM);
+    const newSearch = params.toString();
+    return {
+      q,
+      cleanUrl: location.pathname + (newSearch ? '?' + newSearch : '') + location.hash,
+    };
+  }
 
   function setInputValueViaSetter(el, text) {
     try {
@@ -966,6 +1001,17 @@
         el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+        if (el.value !== text) {
+          try {
+            const dt = new DataTransfer();
+            dt.setData('text/plain', text);
+            el.dispatchEvent(new ClipboardEvent('paste', {
+              bubbles: true, cancelable: true, clipboardData: dt,
+            }));
+          } catch (e) {
+            warn('textarea paste fallback failed', e);
+          }
+        }
         return true;
       }
       if (el.getAttribute && el.getAttribute('contenteditable') === 'true') {
@@ -1010,17 +1056,12 @@
   }
 
   function maybeFillForwardedQuestion(currentLabel) {
-    const m = location.hash.match(FORWARD_HASH_RE);
-    if (!m) return;
-    let q;
-    try { q = decodeURIComponent(m[1]); } catch { return; }
+    const forwarded = readForwardedQuestionFromUrl();
+    if (!forwarded) return;
+    const q = forwarded.q;
     if (!q) return;
 
-    const newHash = location.hash
-      .replace(FORWARD_HASH_RE, '')
-      .replace(/^#&/, '#')
-      .replace(/^#$/, '');
-    history.replaceState(null, '', location.pathname + location.search + newHash);
+    history.replaceState(null, '', forwarded.cleanUrl);
 
     let attempts = 0;
     const MAX = 60;
