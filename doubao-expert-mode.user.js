@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.14
+// @version      3.0.15
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -110,6 +110,14 @@
     el.dispatchEvent(new PointerEvent('pointerup', { ...opts, pointerId: 1 }));
     el.dispatchEvent(new MouseEvent('mouseup', opts));
     el.dispatchEvent(new MouseEvent('click', opts));
+  }
+
+  function nativeClick(el) {
+    try { el.focus && el.focus(); } catch {}
+    try { el.click(); return true; } catch (e) {
+      warn('native click failed', e);
+      return false;
+    }
   }
 
   function simulateHover(el) {
@@ -302,21 +310,28 @@
       const current = (trigger.innerText || trigger.textContent || '').replace(/\s+/g, ' ').trim();
       if (current.includes('GLM-5.1')) return { status: 'noop', reason: '当前已是 GLM-5.1' };
 
-      simulateClick(trigger);
+      pressEscape();
+      await sleep(120);
+      nativeClick(trigger);
 
       let option = null;
+      let expanded = trigger.getAttribute('aria-expanded') === 'true';
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
+        expanded = expanded || trigger.getAttribute('aria-expanded') === 'true';
         option = this.findModelOption('GLM-5.1');
         if (option) break;
         await sleep(300);
       }
       if (!option) {
         pressEscape();
-        return { status: 'error', reason: '已展开模型菜单，但未找到 GLM-5.1 选项（可能未登录或账号暂无权限）' };
+        const reason = expanded
+          ? '模型菜单已展开，但未找到 GLM-5.1 选项（可能账号暂无权限）'
+          : '点击模型按钮后菜单未展开（页面可能拦截了脚本点击）';
+        return { status: 'error', reason };
       }
 
-      simulateClick(option);
+      nativeClick(option);
       await sleep(800);
 
       const after = this.findModelButton();
@@ -530,7 +545,9 @@
     { id: 'copilot',  label: 'GitHub Copilot', url: 'https://github.com/copilot',
       test: (u) => /^https:\/\/github\.com\/copilot(?:[/?#]|$)/.test(u),
       // GitHub 会在 Copilot 页面加载早期清掉 hash，改用 query 参数传递待填问题
-      useQueryParam: true },
+      useQueryParam: true,
+      userBubble: findCopilotUserMessages,
+      appendInsideBubble: true },
     { id: 'chatglm',  label: '智谱',      url: 'https://chatglm.cn/main/alltoolsdetail?lang=zh',
       test: (u) => /^https:\/\/chatglm\.cn\//.test(u),
       // 智谱用户消息左对齐、有用户名头部，无 bg/radius，启发式抓不到；
@@ -841,6 +858,47 @@
     return (bubble.innerText || '').replace(/ /g, ' ').trim();
   }
 
+  function findCopilotUserMessages() {
+    const input = document.querySelector('textarea[placeholder="Ask Copilot"]');
+    const inputRect = input && input.getBoundingClientRect();
+    const candidates = [];
+    const seenText = new Set();
+
+    for (const el of document.querySelectorAll('div,article,section,li,p')) {
+      if (isExcluded(el)) continue;
+      if (!isVisibleElement(el)) continue;
+      const text = extractBubbleTextDefault(el);
+      if (!text || text.length < 2 || text.length > 8000) continue;
+      if (seenText.has(text)) continue;
+      if (/^(Copilot|Documentation|Changelog|Sign in|Ask Copilot|Send now)$/i.test(text)) continue;
+      if (el.querySelector('textarea,input,[contenteditable="true"]')) continue;
+      if (el.querySelectorAll('button,a').length > 4) continue;
+
+      const r = el.getBoundingClientRect();
+      if (r.width < 120 || r.height < 24) continue;
+      if (inputRect && r.top > inputRect.top - 20) continue;
+      if (r.left < window.innerWidth * 0.18 || r.right > window.innerWidth * 0.98) continue;
+
+      const cls = (el.className || '').toString();
+      const looksLikeCopilotMessage = /message|Message|chat|Chat|bubble|Bubble|markdown|Markdown/i.test(cls)
+        || el.closest('[class*="message"],[class*="Message"],[class*="chat"],[class*="Chat"]');
+      const looksRightAligned = isRightAlignedRelative(el);
+      if (!looksLikeCopilotMessage && !looksRightAligned) continue;
+
+      seenText.add(text);
+      candidates.push(el);
+    }
+
+    candidates.sort((a, b) => {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      const aScore = (isRightAlignedRelative(a) ? 1000 : 0) + ar.top;
+      const bScore = (isRightAlignedRelative(b) ? 1000 : 0) + br.top;
+      return bScore - aScore;
+    });
+    return candidates;
+  }
+
   // 扫描状态
   let lastForwardUrl = '';
   const MAX_PER_SCAN = 8; // 单次扫描挂载上限，纯粹用于限制每帧工作量
@@ -859,6 +917,30 @@
   // wrapper，标记此时仍残留，会让 dedupe 误判"已挂过"，导致按钮永久消失。
   function tryAttachToBubble(bubble, currentId, target, scanState) {
     if (!bubble) return 'skip';
+
+    if (target && target.appendInsideBubble) {
+      const existing = bubble.querySelector(':scope > [data-aem-forward-row]');
+      if (existing) {
+        bubble.dataset.aemBubble = '1';
+        return 'skip';
+      }
+
+      const text = extractBubbleText(bubble, target && target.excludeContent);
+      if (!text || text.length < 2 || text.length > 8000) return 'skip';
+
+      const row = buildForwardRow(text, currentId);
+      if (!row) return 'skip';
+
+      const wrapper = document.createElement('div');
+      wrapper.className = '__aem-forward-row-host';
+      wrapper.dataset.aemForwardRow = '1';
+      wrapper.appendChild(row);
+      delete row.dataset.aemForwardRow;
+      bubble.appendChild(wrapper);
+      bubble.dataset.aemBubble = '1';
+      scanState.attached++;
+      return 'attached';
+    }
 
     const directHost = bubble.parentElement;
     if (!directHost) return 'skip';
@@ -910,7 +992,13 @@
     const scanState = { attached: 0 };
     const capReached = () => scanState.attached >= MAX_PER_SCAN;
 
-    if (target && target.userBubble) {
+    if (target && typeof target.userBubble === 'function') {
+      const bubbles = target.userBubble();
+      for (const b of bubbles) {
+        if (capReached()) break;
+        tryAttachToBubble(b, currentId, target, scanState);
+      }
+    } else if (target && target.userBubble) {
       // 站点专属：用确定的选择器，跳过启发式
       const bubbles = document.querySelectorAll(target.userBubble);
       for (const b of bubbles) {
