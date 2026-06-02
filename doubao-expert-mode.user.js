@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.19
+// @version      3.0.20
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -857,6 +857,13 @@
     return (bubble.innerText || '').replace(/ /g, ' ').trim();
   }
 
+  function extractCopilotCandidateText(el) {
+    return extractBubbleText(el, '.__aem-forward-row-host,.__aem-forward-row,.__aem-forward-menu,[data-aem-forward-row]')
+      .replace(/^↗\s*问问别的AI\s*/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function findCopilotUserMessages() {
     const input = document.querySelector('textarea[placeholder="Ask Copilot"]');
     const inputRect = input && input.getBoundingClientRect();
@@ -867,10 +874,10 @@
     for (const el of document.querySelectorAll('div,section,article,p,span')) {
       if (isExcluded(el)) continue;
       if (!isVisibleElement(el)) continue;
-      const text = extractBubbleTextDefault(el);
+      const text = extractCopilotCandidateText(el);
       if (!text || text.length < 2 || text.length > 8000) continue;
       if (seenText.has(text)) continue;
-      if (/^(Copilot|Documentation|Changelog|Sign in|Ask Copilot|Send now|问问别的AI)$/i.test(text)) continue;
+      if (/^(Copilot|Documentation|Changelog|Sign in|Ask Copilot|Send now)$/i.test(text)) continue;
       if (el.querySelector('textarea,input,[contenteditable="true"],button')) continue;
       if (el.querySelectorAll('a').length > 2) continue;
 
@@ -915,7 +922,7 @@
       if (!styled && !aligned && !visuallyRight) continue;
 
       const area = r.width * r.height;
-      const score = (styled ? 2000 : 0) + (aligned ? 1000 : 0) + r.left - (area / 10000);
+      const score = (styled ? 2000 : 0) + (aligned ? 1000 : 0) + (area / 10000);
       if (score > bestScore) {
         bestScore = score;
         best = cur;
