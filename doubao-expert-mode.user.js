@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.20
+// @version      3.0.21
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -896,11 +896,27 @@
     candidates.sort((a, b) => {
       const ar = a.getBoundingClientRect();
       const br = b.getBoundingClientRect();
+      const aScore = (ar.width * ar.height) + (isRightAlignedRelative(a) ? 1000000 : 0);
+      const bScore = (br.width * br.height) + (isRightAlignedRelative(b) ? 1000000 : 0);
+      return bScore - aScore;
+    });
+
+    const unique = [];
+    for (const bubble of candidates) {
+      if (unique.some((kept) => kept.contains(bubble))) continue;
+      const innerIndex = unique.findIndex((kept) => bubble.contains(kept));
+      if (innerIndex >= 0) unique[innerIndex] = bubble;
+      else unique.push(bubble);
+    }
+
+    unique.sort((a, b) => {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
       const aScore = (isRightAlignedRelative(a) ? 1000 : 0) + ar.top;
       const bScore = (isRightAlignedRelative(b) ? 1000 : 0) + br.top;
       return bScore - aScore;
     });
-    return candidates;
+    return unique;
   }
 
   function findCopilotBubbleFromTextNode(el) {
@@ -949,6 +965,12 @@
   // wrapper，标记此时仍残留，会让 dedupe 误判"已挂过"，导致按钮永久消失。
   function tryAttachToBubble(bubble, currentId, target, scanState) {
     if (!bubble) return 'skip';
+    if (target && target.id === 'copilot') {
+      let p = bubble;
+      for (let i = 0; i < 5 && p && p !== document.body; i++, p = p.parentElement) {
+        if (p.querySelector && p.querySelector('[data-aem-forward-row]')) return 'skip';
+      }
+    }
 
     if (target && target.appendInsideBubble) {
       const existing = bubble.querySelector(':scope > [data-aem-forward-row]');
