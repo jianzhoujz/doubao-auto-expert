@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.23
+// @version      3.0.24
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -878,8 +878,36 @@
       .trim();
   }
 
+  function extractCopilotLeafText(root) {
+    const parts = [];
+    const seen = new Set();
+
+    function walk(node) {
+      if (node.nodeType === 3) {
+        const text = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+        if (!text || /^You said:\s*$/i.test(text)) return;
+        if (seen.has(text)) return;
+        seen.add(text);
+        parts.push(text);
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      if (node.closest && node.closest('.__aem-forward-row-host,.__aem-forward-row,.__aem-forward-menu,[data-aem-forward-row],button')) return;
+      if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') return;
+      if (isA11yOnlyElement(node)) return;
+      const cs = getComputedStyle(node);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return;
+      for (const child of node.childNodes) walk(child);
+    }
+
+    walk(root);
+    return parts.join(' ').trim();
+  }
+
+  const copilotBubbleTexts = new WeakMap();
+
   function extractCopilotForwardText(bubble) {
-    let text = extractCopilotCandidateText(bubble);
+    let text = copilotBubbleTexts.get(bubble) || extractCopilotLeafText(bubble) || extractCopilotCandidateText(bubble);
     const said = text.match(/^You said:\s*(.+)$/i);
     if (said) {
       text = said[1].trim();
@@ -893,6 +921,9 @@
         const half = text.slice(0, text.length / 2);
         if (half.length >= 2 && half + half === text) text = half;
       }
+    } else if (text.length >= 4 && text.length % 2 === 0) {
+      const half = text.slice(0, text.length / 2);
+      if (half.length >= 2 && half + half === text) text = half;
     }
 
     return text;
@@ -922,7 +953,10 @@
 
       const bubble = findCopilotBubbleFromTextNode(el);
       if (!bubble || seenBubble.has(bubble)) continue;
-      seenText.add(text);
+      const leafText = extractCopilotLeafText(el);
+      const cleanText = leafText || text;
+      seenText.add(cleanText);
+      copilotBubbleTexts.set(bubble, cleanText);
       seenBubble.add(bubble);
       candidates.push(bubble);
     }
