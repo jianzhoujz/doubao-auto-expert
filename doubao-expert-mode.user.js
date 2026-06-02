@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.16
+// @version      3.0.17
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -863,11 +863,9 @@
     const candidates = [];
     const seenText = new Set();
 
-    for (const el of document.querySelectorAll('div,p')) {
+    for (const el of document.querySelectorAll('div,p,span')) {
       if (isExcluded(el)) continue;
       if (!isVisibleElement(el)) continue;
-      if (!hasBubbleStyle(el)) continue;
-      if (!isRightAlignedRelative(el)) continue;
       const text = extractBubbleTextDefault(el);
       if (!text || text.length < 2 || text.length > 8000) continue;
       if (seenText.has(text)) continue;
@@ -878,10 +876,11 @@
       const r = el.getBoundingClientRect();
       if (r.width < 32 || r.height < 24) continue;
       if (inputRect && r.top > inputRect.top - 20) continue;
-      if (r.left < window.innerWidth * 0.35 || r.right > window.innerWidth * 0.98) continue;
+      if (r.left < window.innerWidth * 0.45 || r.right > window.innerWidth * 0.98) continue;
 
       seenText.add(text);
-      candidates.push(findOutermostStyledBubble(el));
+      const bubble = findCopilotBubbleFromTextNode(el);
+      if (bubble) candidates.push(bubble);
     }
 
     candidates.sort((a, b) => {
@@ -892,6 +891,23 @@
       return bScore - aScore;
     });
     return candidates;
+  }
+
+  function findCopilotBubbleFromTextNode(el) {
+    let cur = el;
+    let bubble = null;
+    for (let i = 0; i < 7 && cur && cur !== document.body; i++, cur = cur.parentElement) {
+      if (!isVisibleElement(cur)) continue;
+      if (cur.querySelector('textarea,input,[contenteditable="true"],button')) continue;
+
+      const r = cur.getBoundingClientRect();
+      if (r.width < 32 || r.width > window.innerWidth * 0.5) continue;
+      if (r.left < window.innerWidth * 0.45 || r.right > window.innerWidth * 0.98) continue;
+      if (!hasBubbleStyle(cur)) continue;
+
+      bubble = cur;
+    }
+    return bubble ? findOutermostStyledBubble(bubble) : null;
   }
 
   // 扫描状态
