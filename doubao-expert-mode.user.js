@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.21
+// @version      3.0.22
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -864,6 +864,19 @@
       .trim();
   }
 
+  function extractCopilotForwardText(bubble) {
+    let text = extractCopilotCandidateText(bubble);
+    const said = text.match(/^You said:\s*(.+)$/i);
+    if (said) text = said[1].trim();
+
+    // Copilot can expose both an accessibility label and the visible bubble text.
+    // When they are identical, innerText becomes "You said: <q> <q>"; keep one copy.
+    const duplicated = text.match(/^(.+)\s+\1$/);
+    if (duplicated) text = duplicated[1].trim();
+
+    return text;
+  }
+
   function findCopilotUserMessages() {
     const input = document.querySelector('textarea[placeholder="Ask Copilot"]');
     const inputRect = input && input.getBoundingClientRect();
@@ -979,7 +992,9 @@
         return 'skip';
       }
 
-      const text = extractBubbleText(bubble, target && target.excludeContent);
+      const text = target && target.id === 'copilot'
+        ? extractCopilotForwardText(bubble)
+        : extractBubbleText(bubble, target && target.excludeContent);
       if (!text || text.length < 2 || text.length > 8000) return 'skip';
 
       const row = buildForwardRow(text, currentId);
@@ -1016,7 +1031,9 @@
       return 'skip';
     }
 
-    const text = extractBubbleText(bubble, target && target.excludeContent);
+    const text = target && target.id === 'copilot'
+      ? extractCopilotForwardText(bubble)
+      : extractBubbleText(bubble, target && target.excludeContent);
     if (!text || text.length < 2 || text.length > 8000) return 'skip';
 
     const row = buildForwardRow(text, currentId);
