@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.22
+// @version      3.0.23
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -842,6 +842,7 @@
         if (node.nodeType !== 1) return '';
         if (excluded.has(node)) return '';
         if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') return '';
+        if (isA11yOnlyElement(node)) return '';
         const cs = getComputedStyle(node);
         if (cs.display === 'none' || cs.visibility === 'hidden') return '';
         let out = '';
@@ -857,6 +858,19 @@
     return (bubble.innerText || '').replace(/ /g, ' ').trim();
   }
 
+  function isA11yOnlyElement(el) {
+    if (!el || !el.tagName) return false;
+    if (el.getAttribute('aria-hidden') === 'true') return true;
+    const cls = (el.className || '').toString();
+    if (/\b(sr-only|visually-hidden|screen-reader|sr_only)\b/i.test(cls)) return true;
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return (cs.position === 'absolute' || cs.position === 'fixed')
+      && r.width <= 2
+      && r.height <= 2
+      && cs.overflow === 'hidden';
+  }
+
   function extractCopilotCandidateText(el) {
     return extractBubbleText(el, '.__aem-forward-row-host,.__aem-forward-row,.__aem-forward-menu,[data-aem-forward-row]')
       .replace(/^↗\s*问问别的AI\s*/gm, '')
@@ -867,12 +881,19 @@
   function extractCopilotForwardText(bubble) {
     let text = extractCopilotCandidateText(bubble);
     const said = text.match(/^You said:\s*(.+)$/i);
-    if (said) text = said[1].trim();
+    if (said) {
+      text = said[1].trim();
 
-    // Copilot can expose both an accessibility label and the visible bubble text.
-    // When they are identical, innerText becomes "You said: <q> <q>"; keep one copy.
-    const duplicated = text.match(/^(.+)\s+\1$/);
-    if (duplicated) text = duplicated[1].trim();
+      // Copilot can expose both an accessibility label and the visible bubble text.
+      // Depending on layout, innerText may become "You said: <q> <q>" or
+      // "You said: <q><q>"; keep one copy when the duplicated half is non-trivial.
+      const spaced = text.match(/^(.+)\s+\1$/);
+      if (spaced) text = spaced[1].trim();
+      else if (text.length >= 4 && text.length % 2 === 0) {
+        const half = text.slice(0, text.length / 2);
+        if (half.length >= 2 && half + half === text) text = half;
+      }
+    }
 
     return text;
   }
