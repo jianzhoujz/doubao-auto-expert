@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.12
-// @description  在 ChatGPT / Claude / Gemini / 智谱 / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 上自动切换深度思考 / 专家模式
+// @version      3.0.13
+// @description  在 ChatGPT / Claude / Gemini / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
 // @supportURL   https://github.com/jianzhoujz/doubao-auto-expert/issues
@@ -12,6 +12,7 @@
 // @match        https://claude.ai/*
 // @match        https://gemini.google.com/*
 // @match        https://chatglm.cn/*
+// @match        https://chat.z.ai/*
 // @match        https://www.kimi.com/*
 // @match        https://kimi.com/*
 // @match        https://chat.deepseek.com/*
@@ -99,6 +100,18 @@
     el.dispatchEvent(new PointerEvent('pointerup', { ...opts, pointerId: 1 }));
     el.dispatchEvent(new MouseEvent('mouseup', opts));
     el.dispatchEvent(new MouseEvent('click', opts));
+  }
+
+  function simulateHover(el) {
+    const rect = el.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+    el.dispatchEvent(new PointerEvent('pointerover', { ...opts, pointerId: 1 }));
+    el.dispatchEvent(new MouseEvent('mouseover', opts));
+    el.dispatchEvent(new PointerEvent('pointerenter', { ...opts, pointerId: 1 }));
+    el.dispatchEvent(new MouseEvent('mouseenter', opts));
+    el.dispatchEvent(new MouseEvent('mousemove', opts));
   }
 
   function pressEscape() {
@@ -247,7 +260,130 @@
     },
   };
 
-  const HANDLERS = [doubaoHandler, deepseekHandler, qianwenHandler];
+  // ---------- Z.ai：切换 GLM-5.1 + 开启搜索/高级搜索 ----------
+  const zaiHandler = {
+    id: 'zai',
+    label: 'Z.ai',
+    targetLabel: 'GLM-5.1 + 高级搜索',
+    rerunOnRouteChange: true,
+    match: () => /^https:\/\/chat\.z\.ai\//.test(location.href),
+
+    findModelButton() {
+      return document.querySelector('button.modelSelectorButton[aria-haspopup="menu"]')
+        || document.querySelector('button[id^="model-selector-"][aria-haspopup="menu"]')
+        || document.querySelector('button[aria-label*="模型"][aria-haspopup="menu"]');
+    },
+
+    findModelOption(label) {
+      const buttons = document.querySelectorAll('button[aria-label="model-item"],button');
+      for (const btn of buttons) {
+        if (!btn.offsetParent) continue;
+        const text = (btn.innerText || btn.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text.includes(label) && !btn.classList.contains('modelSelectorButton')) return btn;
+      }
+      return null;
+    },
+
+    async ensureModel() {
+      const trigger = this.findModelButton();
+      if (!trigger) return { status: 'pending', reason: '未找到模型选择按钮' };
+
+      const current = (trigger.innerText || trigger.textContent || '').replace(/\s+/g, ' ').trim();
+      if (current.includes('GLM-5.1')) return { status: 'noop', reason: '当前已是 GLM-5.1' };
+
+      simulateClick(trigger);
+
+      let option = null;
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        option = this.findModelOption('GLM-5.1');
+        if (option) break;
+        await sleep(300);
+      }
+      if (!option) {
+        pressEscape();
+        return { status: 'error', reason: '已展开模型菜单，但未找到 GLM-5.1 选项（可能未登录或账号暂无权限）' };
+      }
+
+      simulateClick(option);
+      await sleep(800);
+
+      const after = this.findModelButton();
+      const afterText = after && (after.innerText || after.textContent || '').replace(/\s+/g, ' ').trim();
+      if (afterText && afterText.includes('GLM-5.1')) {
+        return { status: 'success', from: current || '当前模型', to: 'GLM-5.1' };
+      }
+      return { status: 'error', reason: `已点击 GLM-5.1，但当前模型仍显示为「${afterText || '未知'}」` };
+    },
+
+    findSearchButton() {
+      return document.querySelector('.messageInputContainer button[data-active]')
+        || document.querySelector('button[data-active]');
+    },
+
+    findAdvancedSearchSwitch() {
+      for (const sw of document.querySelectorAll('button[data-switch-root]')) {
+        const tip = sw.closest('[data-tooltip-content]');
+        const text = tip && (tip.innerText || tip.textContent || '');
+        if (text && (/高级搜索|Advanced Search/.test(text))) return sw;
+      }
+      return null;
+    },
+
+    async ensureAdvancedSearch() {
+      const search = this.findSearchButton();
+      if (!search) return { status: 'pending', reason: '未找到搜索按钮' };
+
+      if (search.getAttribute('data-active') !== 'true') {
+        simulateClick(search);
+        await sleep(500);
+      } else {
+        simulateHover(search);
+        await sleep(300);
+      }
+
+      let sw = this.findAdvancedSearchSwitch();
+      const deadline = Date.now() + 4000;
+      while (!sw && Date.now() < deadline) {
+        simulateHover(search);
+        await sleep(350);
+        sw = this.findAdvancedSearchSwitch();
+      }
+      if (!sw) return { status: 'error', reason: '已开启搜索，但未找到高级搜索开关' };
+
+      if (sw.getAttribute('data-state') === 'checked' || sw.getAttribute('aria-checked') === 'true') {
+        return { status: 'noop', reason: '高级搜索已开启' };
+      }
+
+      simulateClick(sw);
+      await sleep(500);
+
+      const sw2 = this.findAdvancedSearchSwitch();
+      if (sw2 && (sw2.getAttribute('data-state') === 'checked' || sw2.getAttribute('aria-checked') === 'true')) {
+        return { status: 'success', to: '高级搜索' };
+      }
+      return { status: 'error', reason: '已点击高级搜索开关，但未观察到 checked 状态' };
+    },
+
+    async run() {
+      const model = await this.ensureModel();
+      const advancedSearch = await this.ensureAdvancedSearch();
+
+      const results = [model, advancedSearch];
+      const pending = results.find((r) => r.status === 'pending');
+      if (pending) return pending;
+
+      const failed = results.find((r) => r.status === 'error');
+      if (failed) return failed;
+
+      if (results.some((r) => r.status === 'success')) {
+        return { status: 'success', from: model.from, to: 'GLM-5.1 + 高级搜索' };
+      }
+      return { status: 'noop', reason: 'GLM-5.1 与高级搜索均已开启' };
+    },
+  };
+
+  const HANDLERS = [doubaoHandler, deepseekHandler, qianwenHandler, zaiHandler];
 
   // ============================================================
   // 调度
@@ -379,6 +515,11 @@
       // Kimi 用户气泡左对齐式：.segment-user 是行容器，.user-content 是纯文本子节点；
       // 同级的 .segment-user-actions（编辑/复制/分享）不在 .user-content 内，不污染文本
       userBubble: '.segment-user .user-content' },
+    { id: 'zai',      label: 'Z.ai',      url: 'https://chat.z.ai/',
+      test: (u) => /^https:\/\/chat\.z\.ai\//.test(u),
+      // Z.ai 用户消息正文容器 class 为 chat-user；底部操作按钮在 .buttons 中，需剔除
+      userBubble: '.chat-user',
+      excludeContent: '.buttons,button' },
     { id: 'deepseek', label: 'DeepSeek',  url: 'https://chat.deepseek.com/',
       test: (u) => /^https:\/\/chat\.deepseek\.com\//.test(u) },
     { id: 'qianwen',  label: '千问',      url: 'https://www.qianwen.com/',
