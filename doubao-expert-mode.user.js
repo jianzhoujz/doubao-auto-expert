@@ -22,7 +22,7 @@
 // @match        https://www.doubao.com/chat/*
 // @match        https://yuanbao.tencent.com/*
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-end
 // ==/UserScript==
 
 (function () {
@@ -89,6 +89,15 @@
   const log = (...args) => console.log('[AutoExpert]', ...args);
   const warn = (...args) => console.warn('[AutoExpert]', ...args);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function isVisibleElement(el) {
+    if (!el || !el.getBoundingClientRect) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 1 || r.height <= 1) return false;
+    if (r.bottom < 0 || r.top > window.innerHeight) return false;
+    const cs = getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+  }
 
   function simulateClick(el) {
     const rect = el.getBoundingClientRect();
@@ -266,6 +275,7 @@
     label: 'Z.ai',
     targetLabel: 'GLM-5.1 + 高级搜索',
     rerunOnRouteChange: true,
+    rerunOnDomChange: true,
     match: () => /^https:\/\/chat\.z\.ai\//.test(location.href),
 
     findModelButton() {
@@ -277,7 +287,7 @@
     findModelOption(label) {
       const buttons = document.querySelectorAll('button[aria-label="model-item"],button');
       for (const btn of buttons) {
-        if (!btn.offsetParent) continue;
+        if (!isVisibleElement(btn)) continue;
         const text = (btn.innerText || btn.textContent || '').replace(/\s+/g, ' ').trim();
         if (text.includes(label) && !btn.classList.contains('modelSelectorButton')) return btn;
       }
@@ -395,6 +405,7 @@
   let switching = false;
   let attemptCount = 0;
   let settledForUrl = '';
+  let domAttemptScheduled = false;
 
   function pickHandler() {
     return HANDLERS.find((h) => h.match()) || null;
@@ -456,17 +467,28 @@
     setTimeout(attempt, delay || 0);
   }
 
+  function triggerFromDom(delay) {
+    if (domAttemptScheduled || switching || settledForUrl === location.href) return;
+    domAttemptScheduled = true;
+    setTimeout(() => {
+      domAttemptScheduled = false;
+      attempt();
+    }, delay || 120);
+  }
+
   function watchRouteChanges() {
     let lastUrl = location.href;
 
     const obs = new MutationObserver(() => {
+      const h = pickHandler();
       if (location.href !== lastUrl) {
         lastUrl = location.href;
-        const h = pickHandler();
         if (h && h.rerunOnRouteChange) {
           log('route change →', location.href);
           trigger(ROUTE_DELAY);
         }
+      } else if (h && h.rerunOnDomChange) {
+        triggerFromDom(120);
       }
     });
     if (document.body) obs.observe(document.body, { childList: true, subtree: true });
