@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.17
+// @version      3.0.19
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -862,8 +862,9 @@
     const inputRect = input && input.getBoundingClientRect();
     const candidates = [];
     const seenText = new Set();
+    const seenBubble = new WeakSet();
 
-    for (const el of document.querySelectorAll('div,p,span')) {
+    for (const el of document.querySelectorAll('div,section,article,p,span')) {
       if (isExcluded(el)) continue;
       if (!isVisibleElement(el)) continue;
       const text = extractBubbleTextDefault(el);
@@ -874,13 +875,15 @@
       if (el.querySelectorAll('a').length > 2) continue;
 
       const r = el.getBoundingClientRect();
-      if (r.width < 32 || r.height < 24) continue;
+      if (r.width < 16 || r.height < 14) continue;
       if (inputRect && r.top > inputRect.top - 20) continue;
-      if (r.left < window.innerWidth * 0.45 || r.right > window.innerWidth * 0.98) continue;
+      if (r.right < window.innerWidth * 0.55 || r.right > window.innerWidth * 0.98) continue;
 
-      seenText.add(text);
       const bubble = findCopilotBubbleFromTextNode(el);
-      if (bubble) candidates.push(bubble);
+      if (!bubble || seenBubble.has(bubble)) continue;
+      seenText.add(text);
+      seenBubble.add(bubble);
+      candidates.push(bubble);
     }
 
     candidates.sort((a, b) => {
@@ -895,19 +898,30 @@
 
   function findCopilotBubbleFromTextNode(el) {
     let cur = el;
-    let bubble = null;
+    let best = null;
+    let bestScore = -Infinity;
     for (let i = 0; i < 7 && cur && cur !== document.body; i++, cur = cur.parentElement) {
       if (!isVisibleElement(cur)) continue;
       if (cur.querySelector('textarea,input,[contenteditable="true"],button')) continue;
 
       const r = cur.getBoundingClientRect();
-      if (r.width < 32 || r.width > window.innerWidth * 0.5) continue;
-      if (r.left < window.innerWidth * 0.45 || r.right > window.innerWidth * 0.98) continue;
-      if (!hasBubbleStyle(cur)) continue;
+      if (r.width < 16 || r.width > window.innerWidth * 0.55) continue;
+      if (r.height < 14 || r.height > window.innerHeight * 0.3) continue;
+      if (r.left < window.innerWidth * 0.25 || r.right < window.innerWidth * 0.55 || r.right > window.innerWidth * 0.98) continue;
 
-      bubble = cur;
+      const styled = hasBubbleStyle(cur);
+      const aligned = isRightAlignedRelative(cur);
+      const visuallyRight = r.left > window.innerWidth * 0.62;
+      if (!styled && !aligned && !visuallyRight) continue;
+
+      const area = r.width * r.height;
+      const score = (styled ? 2000 : 0) + (aligned ? 1000 : 0) + r.left - (area / 10000);
+      if (score > bestScore) {
+        bestScore = score;
+        best = cur;
+      }
     }
-    return bubble ? findOutermostStyledBubble(bubble) : null;
+    return best && hasBubbleStyle(best) ? findOutermostStyledBubble(best) : best;
   }
 
   // 扫描状态
