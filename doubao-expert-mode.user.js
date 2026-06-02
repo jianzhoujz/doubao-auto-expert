@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 网页版自动切换深度思考 / 专家模式
 // @namespace    https://github.com/jianzhoujz/doubao-auto-expert
-// @version      3.0.15
+// @version      3.0.16
 // @description  在 ChatGPT / Claude / Gemini / GitHub Copilot / 智谱 / Z.ai / Kimi / DeepSeek / 千问 / Qwen / 豆包 / 元宝 之间一键转发问题（自动填入目标输入框）；并在豆包 / DeepSeek / 千问 / Z.ai 上自动切换深度思考 / 专家模式 / 高级搜索
 // @author       Jian Zhou
 // @homepageURL  https://github.com/jianzhoujz/doubao-auto-expert
@@ -546,8 +546,7 @@
       test: (u) => /^https:\/\/github\.com\/copilot(?:[/?#]|$)/.test(u),
       // GitHub 会在 Copilot 页面加载早期清掉 hash，改用 query 参数传递待填问题
       useQueryParam: true,
-      userBubble: findCopilotUserMessages,
-      appendInsideBubble: true },
+      userBubble: findCopilotUserMessages },
     { id: 'chatglm',  label: '智谱',      url: 'https://chatglm.cn/main/alltoolsdetail?lang=zh',
       test: (u) => /^https:\/\/chatglm\.cn\//.test(u),
       // 智谱用户消息左对齐、有用户名头部，无 bg/radius，启发式抓不到；
@@ -864,29 +863,25 @@
     const candidates = [];
     const seenText = new Set();
 
-    for (const el of document.querySelectorAll('div,article,section,li,p')) {
+    for (const el of document.querySelectorAll('div,p')) {
       if (isExcluded(el)) continue;
       if (!isVisibleElement(el)) continue;
+      if (!hasBubbleStyle(el)) continue;
+      if (!isRightAlignedRelative(el)) continue;
       const text = extractBubbleTextDefault(el);
       if (!text || text.length < 2 || text.length > 8000) continue;
       if (seenText.has(text)) continue;
-      if (/^(Copilot|Documentation|Changelog|Sign in|Ask Copilot|Send now)$/i.test(text)) continue;
-      if (el.querySelector('textarea,input,[contenteditable="true"]')) continue;
-      if (el.querySelectorAll('button,a').length > 4) continue;
+      if (/^(Copilot|Documentation|Changelog|Sign in|Ask Copilot|Send now|问问别的AI)$/i.test(text)) continue;
+      if (el.querySelector('textarea,input,[contenteditable="true"],button')) continue;
+      if (el.querySelectorAll('a').length > 2) continue;
 
       const r = el.getBoundingClientRect();
-      if (r.width < 120 || r.height < 24) continue;
+      if (r.width < 32 || r.height < 24) continue;
       if (inputRect && r.top > inputRect.top - 20) continue;
-      if (r.left < window.innerWidth * 0.18 || r.right > window.innerWidth * 0.98) continue;
-
-      const cls = (el.className || '').toString();
-      const looksLikeCopilotMessage = /message|Message|chat|Chat|bubble|Bubble|markdown|Markdown/i.test(cls)
-        || el.closest('[class*="message"],[class*="Message"],[class*="chat"],[class*="Chat"]');
-      const looksRightAligned = isRightAlignedRelative(el);
-      if (!looksLikeCopilotMessage && !looksRightAligned) continue;
+      if (r.left < window.innerWidth * 0.35 || r.right > window.innerWidth * 0.98) continue;
 
       seenText.add(text);
-      candidates.push(el);
+      candidates.push(findOutermostStyledBubble(el));
     }
 
     candidates.sort((a, b) => {
